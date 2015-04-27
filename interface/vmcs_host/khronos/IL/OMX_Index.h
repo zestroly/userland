@@ -530,6 +530,7 @@ typedef enum OMX_INDEXTYPE {
     OMX_IndexParamBrcmSupportsSlices,                         /**< reference: OMX_CONFIG_PORTBOOLEANTYPE */
     OMX_IndexParamBrcmIspBlockOverride,                       /**< reference: OMX_PARAM_U32TYPE */
     OMX_IndexParamBrcmSupportsUnalignedSliceheight,           /**< reference: OMX_CONFIG_PORTBOOLEANTYPE */
+
     OMX_IndexMax = 0x7FFFFFFF
 } OMX_INDEXTYPE;
 
