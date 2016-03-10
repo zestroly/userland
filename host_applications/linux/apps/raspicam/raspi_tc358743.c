@@ -558,9 +558,9 @@ static void callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
 
 int main (void)
 {
-	MMAL_COMPONENT_T *rawcam, *render;
+	MMAL_COMPONENT_T *rawcam, *render, *isp;
 	MMAL_STATUS_T status;
-	MMAL_PORT_T *output, *input;
+	MMAL_PORT_T *rc_output, *isp_input, *isp_output, *vr_input;
 	MMAL_POOL_T *pool;
 	MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
 	MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
@@ -575,16 +575,24 @@ int main (void)
 		vcos_log_error("Failed to create rawcam");
 		return -1;
 	}
+	status = mmal_component_create("vc.ril.isp", &isp);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to create isp");
+		return -1;
+	}
 	status = mmal_component_create("vc.ril.video_render", &render);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to create rawcam");
 		return -1;
 	}
-	output = rawcam->output[0];
-	input = render->input[0];
+	rc_output = rawcam->output[0];
+	isp_input = isp->input[0];
+	isp_output = isp->output[0];
+	vr_input = render->input[0];
 
-	status = mmal_port_parameter_get(output, &rx_cfg.hdr);
+	status = mmal_port_parameter_get(rc_output, &rx_cfg.hdr);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to get cfg");
@@ -597,7 +605,7 @@ int main (void)
 	rx_cfg.data_lanes = 2;
 	rx_cfg.embedded_data_lines = 128;
 	vcos_log_error("Set pack to %d, unpack to %d", rx_cfg.unpack, rx_cfg.pack);
-	status = mmal_port_parameter_set(output, &rx_cfg.hdr);
+	status = mmal_port_parameter_set(rc_output, &rx_cfg.hdr);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to set cfg");
@@ -615,7 +623,7 @@ int main (void)
 	rx_timing.cpi_timing1 = 0;
 	rx_timing.cpi_timing2 = 0;
 	vcos_log_error("Set rx_timing");
-	status = mmal_port_parameter_set(output, &rx_timing.hdr);
+	status = mmal_port_parameter_set(rc_output, &rx_timing.hdr);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to set rx timing");
@@ -630,30 +638,30 @@ int main (void)
 		vcos_log_error("Failed to enable");
 		goto component_destroy;
 	}
-	status = mmal_port_parameter_set_boolean(output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	status = mmal_port_parameter_set_boolean(rc_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to set zero copy");
 		goto component_disable;
 	}
 
-	output->format->es->video.crop.width = WIDTH;
-	output->format->es->video.crop.height = HEIGHT;
-	output->format->es->video.width = VCOS_ALIGN_UP(WIDTH, 32);
-	output->format->es->video.height = VCOS_ALIGN_UP(HEIGHT, 16);
-	output->format->encoding = ENCODING;
+	rc_output->format->es->video.crop.width = WIDTH;
+	rc_output->format->es->video.crop.height = HEIGHT;
+	rc_output->format->es->video.width = VCOS_ALIGN_UP(WIDTH, 32);
+	rc_output->format->es->video.height = VCOS_ALIGN_UP(HEIGHT, 16);
+	rc_output->format->encoding = ENCODING;
 	vcos_log_error("output p_fmt_commit...");
-	status = mmal_port_format_commit(output);
+	status = mmal_port_format_commit(rc_output);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed port_format_commit");
 		goto component_disable;
 	}
 
- 	output->buffer_size = output->buffer_size_recommended;
- 	output->buffer_num = 8; //output->buffer_num_recommended;
-     vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
-	status = mmal_port_format_commit(output);
+ 	rc_output->buffer_size = rc_output->buffer_size_recommended;
+ 	rc_output->buffer_num = 8; //output->buffer_num_recommended;
+     vcos_log_error("buffer size is %d bytes, num %d", rc_output->buffer_size, rc_output->buffer_num);
+	status = mmal_port_format_commit(rc_output);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed port_format_commit");
@@ -663,7 +671,7 @@ int main (void)
 #if MANUAL_CONNECTION
 	//If video_render doesn't ignore MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO, need to
 	//filter them in the connection, so have to do it manually.
-   status = mmal_format_full_copy(input->format, output->format);
+   status = mmal_format_full_copy(isp_input->format, rc_output->format);
    if (status == MMAL_SUCCESS)
       status = mmal_port_format_commit(input);
    if (status != MMAL_SUCCESS)
@@ -707,24 +715,53 @@ int main (void)
 #else
 	//If video_render does ignore MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO (firmware hack!), can
    //use a mmal_connection
-   MMAL_CONNECTION_T *connection;
+   MMAL_CONNECTION_T *connection_to_isp;
 
-	status = mmal_port_parameter_set_boolean(input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	status = mmal_port_parameter_set_boolean(isp_input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to set zero copy on video_render");
 		goto component_disable;
 	}
 	vcos_log_error("Create connection....");
-   status =  mmal_connection_create(&connection, output, input, MMAL_CONNECTION_FLAG_TUNNELLING);
+   status =  mmal_connection_create(&connection_to_isp, rc_output, isp_input, MMAL_CONNECTION_FLAG_TUNNELLING);
+
+   status = mmal_format_full_copy(isp_output->format, rc_output->format);
+   isp_output->format->encoding = MMAL_ENCODING_I420;
+   if (status == MMAL_SUCCESS)
+      status = mmal_port_format_commit(isp_output);
+mmal_log_dump_format(isp_output->format);
+  MMAL_CONNECTION_T *connection_isp_to_vr;
+	status = mmal_port_parameter_set_boolean(isp_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to set zero copy on video_render");
+		goto component_disable;
+	}
+	status = mmal_port_parameter_set_boolean(vr_input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to set zero copy on video_render");
+		goto component_disable;
+	}
+	vcos_log_error("Create connection....");
+   status =  mmal_connection_create(&connection_isp_to_vr, isp_output, vr_input, MMAL_CONNECTION_FLAG_TUNNELLING);
 
    if (status == MMAL_SUCCESS)
    {
 	vcos_log_error("Enable connection...");
-    vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
-      status =  mmal_connection_enable(connection);
+    vcos_log_error("buffer size is %d bytes, num %d", rc_output->buffer_size, rc_output->buffer_num);
+      status =  mmal_connection_enable(connection_to_isp);
       if (status != MMAL_SUCCESS)
-         mmal_connection_destroy(connection);
+         mmal_connection_destroy(connection_to_isp);
+   }
+   if (status == MMAL_SUCCESS)
+   {
+	vcos_log_error("Enable connection...");
+    vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
+      status =  mmal_connection_enable(connection_isp_to_vr);
+      if (status != MMAL_SUCCESS)
+         mmal_connection_destroy(connection_isp_to_vr);
    }
 
 #endif
@@ -751,11 +788,18 @@ port_disable:
 pool_destroy:
 	mmal_port_pool_destroy(output, pool);
 #else
-	mmal_connection_disable(connection);
-	mmal_connection_destroy(connection);
+	mmal_connection_disable(connection_to_isp);
+	mmal_connection_destroy(connection_to_isp);
+	mmal_connection_disable(connection_isp_to_vr);
+	mmal_connection_destroy(connection_isp_to_vr);
 #endif
 component_disable:
 	status = mmal_component_disable(rawcam);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to disable rawcam");
+	}
+	status = mmal_component_disable(isp);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to disable rawcam");
@@ -767,6 +811,7 @@ component_disable:
 	}
 component_destroy:
 	mmal_component_destroy(rawcam);
+	mmal_component_destroy(isp);
 	mmal_component_destroy(render);
 	return 0;
 }
