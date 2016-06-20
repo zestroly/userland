@@ -155,6 +155,8 @@ typedef struct
    MMAL_CONNECTION_T *encoder_connection; /// Pointer to the connection from camera to encoder
 
    MMAL_POOL_T *encoder_pool; /// Pointer to the pool of buffers used by encoder output port
+   MMAL_POOL_T *input_pool; /// Image pool for input of ISP
+   FILE *ip_file;
 
    RASPITEX_STATE raspitex_state; /// GL renderer state and parameters
 
@@ -839,6 +841,18 @@ static void display_valid_parameters(char *app_name)
    return;
 }
 
+static void ip_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
+{
+   vcos_log_error("Buffer %p emptied len %d, flags %04X", buffer, buffer->length, buffer->flags);
+   if(port->is_enabled) {
+      buffer->length = buffer->alloc_size;
+      buffer->flags = MMAL_BUFFER_HEADER_FLAG_FRAME_END;
+      mmal_port_send_buffer(port, buffer);
+   }
+   else
+      mmal_buffer_header_release(buffer);
+}
+
 /**
  *  buffer header callback function for camera control
  *
@@ -956,11 +970,11 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
  */
 static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
 {
-   MMAL_COMPONENT_T *camera = 0;
-   MMAL_ES_FORMAT_T *format;
-   MMAL_PORT_T *preview_port = NULL, *video_port = NULL, *still_port = NULL;
-   MMAL_STATUS_T status;
-
+//   MMAL_COMPONENT_T *camera = 0;
+//   MMAL_ES_FORMAT_T *format;
+//   MMAL_PORT_T *preview_port = NULL, *video_port = NULL, *still_port = NULL;
+   MMAL_STATUS_T status = MMAL_SUCCESS;
+#if 0
    /* Create the component */
    status = mmal_component_create(MMAL_COMPONENT_DEFAULT_CAMERA, &camera);
 
@@ -1063,7 +1077,7 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
    // Now set up the port formats
 
    format = preview_port->format;
-   format->encoding = MMAL_ENCODING_OPAQUE;
+   format->encoding = MMAL_ENCODING_BGRA; //OPAQUE;
    format->encoding_variant = MMAL_ENCODING_I420;
 
    if(state->camera_parameters.shutter_speed > 6000000)
@@ -1164,14 +1178,14 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
       still_port->buffer_num = VIDEO_OUTPUT_BUFFERS_NUM;
 
    /* Enable component */
-   status = mmal_component_enable(camera);
+//   status = mmal_component_enable(camera);
 
-   if (status != MMAL_SUCCESS)
+/*   if (status != MMAL_SUCCESS)
    {
       vcos_log_error("camera component couldn't be enabled");
       goto error;
    }
-
+*/
    if (state->useGL)
    {
       status = raspitex_configure_preview_port(&state->raspitex_state, preview_port);
@@ -1183,18 +1197,18 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
    }
 
    state->camera_component = camera;
-
+#endif
    if (state->verbose)
       fprintf(stderr, "Camera component done\n");
 
    return status;
-
+/*
 error:
 
    if (camera)
       mmal_component_destroy(camera);
 
-   return status;
+   return status;*/
 }
 
 /**
@@ -1828,6 +1842,8 @@ int main(int argc, const char **argv)
    // We have three components. Camera, Preview and encoder.
    // Camera and encoder are different in stills/video, but preview
    // is the same so handed off to a separate module
+   MMAL_PORT_T *isp_ip_port = state.preview_parameters.isp->input[0];
+   MMAL_PORT_T *isp_op_port = state.preview_parameters.isp->output[0];
 
    if ((status = create_camera_component(&state)) != MMAL_SUCCESS)
    {
@@ -1850,16 +1866,19 @@ int main(int argc, const char **argv)
    else
    {
       PORT_USERDATA callback_data;
+      FILE *file = NULL;
 
       if (state.verbose)
          fprintf(stderr, "Starting component connection stage\n");
 
-      camera_preview_port = state.camera_component->output[MMAL_CAMERA_PREVIEW_PORT];
+/*      camera_preview_port = state.camera_component->output[MMAL_CAMERA_PREVIEW_PORT];
       camera_video_port   = state.camera_component->output[MMAL_CAMERA_VIDEO_PORT];
       camera_still_port   = state.camera_component->output[MMAL_CAMERA_CAPTURE_PORT];
-      encoder_input_port  = state.encoder_component->input[0];
+*/      encoder_input_port  = state.encoder_component->input[0];
       encoder_output_port = state.encoder_component->output[0];
 
+      isp_ip_port = state.preview_parameters.isp->input[0];
+      isp_op_port = state.preview_parameters.isp->output[0];
       if (! state.useGL)
       {
          if (state.verbose)
@@ -1869,9 +1888,228 @@ int main(int argc, const char **argv)
          // so we can simple do this without conditionals
          preview_input_port  = state.preview_parameters.preview_component->input[0];
 
-         // Connect camera to preview (which might be a null_sink if no preview required)
-         status = connect_ports(camera_preview_port, preview_input_port, &state.preview_connection);
+         MMAL_ES_FORMAT_T *format = isp_ip_port->format;
+         format->encoding = MMAL_ENCODING_BAYER_SBGGR10P;
+         format->encoding_variant = 0;
+         format->es->video.width = VCOS_ALIGN_UP(2592, 32);
+         format->es->video.height = VCOS_ALIGN_UP(1944, 16);
+         format->es->video.crop.x = 0;
+         format->es->video.crop.y = 0;
+         format->es->video.crop.width = 2592;
+         format->es->video.crop.height = 1944;
+         format->es->video.frame_rate.num = FULL_RES_PREVIEW_FRAME_RATE_NUM;
+         format->es->video.frame_rate.den = FULL_RES_PREVIEW_FRAME_RATE_DEN;
+
+         file = fopen(state.filename, "rb");
+         if(file) {
+            char head[32];
+            struct brcm_raw_header {
+              uint8_t name[32];
+              uint16_t width;
+              uint16_t height;
+              uint16_t padding_right;
+              uint16_t padding_down;
+              uint32_t dummy[6];
+              uint16_t transform;
+              uint16_t format;
+              uint8_t bayer_order;
+              uint8_t bayer_format;
+            };
+            struct brcm_raw_header header;
+            //Expected offsets from the end of the file to find the BRCM header
+            const long offsets[] = {
+                //OV5647 offsets
+                6404096,  //5MPix 2592x1944
+                2717696,  //1920x1080
+                1625600,  //1296x972
+                1233920,  //1296x730
+                445440,   //640x480
+                //IMX219 offsets
+                10270208, //8MPix 3280x2464
+                2678784,  //1920x1080
+                2628608,  //1640x1232
+                1963008,  //1640x922
+                1233920,  //1280x720
+                445440,   //640x480
+                -1        //Marker for end of table
+            };
+            int i, data_offset = -1;
+            for(i=0; offsets[i]!=-1; i++)
+            {
+               if(!fseek (file, -offsets[i], SEEK_END) &&
+                  fread (head, 1, 32, file) && !strncmp(head,"BRCM", 4)) {
+                  data_offset = ftell(file) + 0x8000-32;
+                  break;
+               }
+            }
+            if (data_offset > 0)
+            {
+               fseek (file, 144, SEEK_CUR);
+               fread(&header, 1, sizeof(header), file);
+
+               vcos_log_error("Sensor mode is %s, %dx%d, format %d, bayer_fmt %d, bayer_order %d",
+                        header.name,
+                        header.width, header.height,
+                        header.format,
+                        header.bayer_format,
+                        header.bayer_order
+                        );
+               if (header.format == 33)   //Bayer image
+               {
+                  const MMAL_FOURCC_T encodings[4][15] = {
+                  //RGGB
+                  {
+                     0 ,      //RAW6
+                     0 ,      //RAW7
+                     MMAL_ENCODING_BAYER_SRGGB8 ,      //RAW8
+                     MMAL_ENCODING_BAYER_SRGGB10P ,      //RAW10
+                     0 ,      //RAW12
+                     0 ,      //RAW14
+                     0 ,      //RAW16
+                     0 ,      //RAW10_8
+                     0 ,      //RAW12_8
+                     0 ,      //RAW14_8
+                     0 ,      //RAW10L
+                     0 ,      //RAW12L
+                     0 ,      //RAW14L
+                     0 ,      //RAW16_BIG_ENDIAN
+                     0 ,      //RAW4
+                  },
+                  //GBRG
+                  {
+                     0 ,      //RAW6
+                     0 ,      //RAW7
+                     MMAL_ENCODING_BAYER_SGBRG8 ,      //RAW8
+                     MMAL_ENCODING_BAYER_SGBRG10P ,      //RAW10
+                     0 ,      //RAW12
+                     0 ,      //RAW14
+                     0 ,      //RAW16
+                     0 ,      //RAW10_8
+                     0 ,      //RAW12_8
+                     0 ,      //RAW14_8
+                     0 ,      //RAW10L
+                     0 ,      //RAW12L
+                     0 ,      //RAW14L
+                     0 ,      //RAW16_BIG_ENDIAN
+                     0 ,      //RAW4
+                  },
+                  //BGGR
+                  {
+                     0 ,      //RAW6
+                     0 ,      //RAW7
+                     MMAL_ENCODING_BAYER_SBGGR8 ,      //RAW8
+                     MMAL_ENCODING_BAYER_SBGGR10P ,      //RAW10
+                     MMAL_ENCODING_BAYER_SBGGR12P ,      //RAW12
+                     0 ,      //RAW14
+                     MMAL_ENCODING_BAYER_SBGGR16 ,      //RAW16
+                     MMAL_ENCODING_BAYER_SBGGR10DPCM8 ,      //RAW10_8
+                     0 ,      //RAW12_8
+                     0 ,      //RAW14_8
+                     0 ,      //RAW10L
+                     0 ,      //RAW12L
+                     0 ,      //RAW14L
+                     0 ,      //RAW16_BIG_ENDIAN
+                     0 ,      //RAW4
+                  },
+                  //GRBG
+                  {
+                     0 ,      //RAW6
+                     0 ,      //RAW7
+                     MMAL_ENCODING_BAYER_SGRBG8 ,      //RAW8
+                     MMAL_ENCODING_BAYER_SGRBG10P ,      //RAW10
+                     0 ,      //RAW12
+                     0 ,      //RAW14
+                     0 ,      //RAW16
+                     0 ,      //RAW10_8
+                     0 ,      //RAW12_8
+                     0 ,      //RAW14_8
+                     0 ,      //RAW10L
+                     0 ,      //RAW12L
+                     0 ,      //RAW14L
+                     0 ,      //RAW16_BIG_ENDIAN
+                     0 ,      //RAW4
+                  } };
+                  format->encoding = encodings[header.bayer_order][header.bayer_format];
+                  format->encoding_variant = 0;
+                  //Conversion to stride for raw10 is a funny one. 
+                  //5 bytes per 4 pixels, then round up to a multiple of 32 bytes.
+                  //No easy way to take arbitrary strides.
+                  format->es->video.crop.width = header.width + header.padding_right;
+                  format->es->video.crop.height = header.height + header.padding_down;
+                  format->es->video.width = format->es->video.crop.width;
+                  format->es->video.height = format->es->video.crop.height;
+                  format->es->video.crop.x = 0;
+                  format->es->video.crop.y = 0;
+                  format->es->video.frame_rate.num = FULL_RES_PREVIEW_FRAME_RATE_NUM;
+                  format->es->video.frame_rate.den = FULL_RES_PREVIEW_FRAME_RATE_DEN;
+               }
+
+               fseek (file, data_offset, SEEK_SET);
+            }
+         }
+         mmal_log_dump_port(isp_ip_port);
+
+         status = mmal_port_format_commit(isp_ip_port);
+         if(status != MMAL_SUCCESS)
+         {
+            vcos_log_error("isp input format couldn't be set");
+            goto error;
+         }
+
+            // Connect camera to preview (which might be a null_sink if no preview required)
+            //status = connect_ports(camera_preview_port, preview_input_port, &state.preview_connection);
+        // status = connect_ports(camera_preview_port, state.preview_parameters.isp->input[0], &state.preview_parameters.isp_connection);
+         mmal_format_full_copy(isp_op_port->format, isp_ip_port->format);
+         isp_op_port->format->es->video.width = 640;
+         isp_op_port->format->es->video.crop.width = 640;
+         isp_op_port->format->es->video.height = 480;
+         isp_op_port->format->es->video.crop.height = 480;
+         isp_op_port->format->encoding = MMAL_ENCODING_NV21;
+
+         status = mmal_port_format_commit(isp_op_port);
+         if(status != MMAL_SUCCESS)
+         {
+            vcos_log_error("isp output format couldn't be set");
+            goto error;
+         }
+
+         status += connect_ports(isp_op_port, preview_input_port, &state.preview_connection);
       }
+      mmal_log_dump_port( isp_ip_port);
+      mmal_log_dump_port( isp_op_port);
+      state.input_pool = mmal_port_pool_create(isp_ip_port, isp_ip_port->buffer_num, isp_ip_port->buffer_size);
+
+      // Enable the encoder output port and tell it its callback function
+      status = mmal_port_enable(isp_ip_port, ip_buffer_callback);
+
+      // Send all the buffers to the encoder output port
+      int num = mmal_queue_length(state.input_pool->queue);
+      int q;
+      for (q=0;q<num;q++)
+      {
+         MMAL_BUFFER_HEADER_T *buffer = mmal_queue_get(state.input_pool->queue);
+
+         if (!buffer)
+            vcos_log_error("Unable to get a required buffer %d from pool queue", q);
+         else {
+            if(file)
+            {
+               int read = fread(buffer->data, 6360000, 1, file);
+   				if(read != 1)
+                  vcos_log_error("Failed reading data - read %d", read);
+            }
+            else
+               vcos_log_error("No file");
+         }
+
+
+         buffer->length = buffer->alloc_size;
+         buffer->flags |= MMAL_BUFFER_HEADER_FLAG_FRAME_END;
+         if (mmal_port_send_buffer(isp_ip_port, buffer)!= MMAL_SUCCESS)
+            vcos_log_error("Unable to send a buffer to encoder output port (%d)", q);
+      }
+      if(file)
+         fclose(file);
 
       if (status == MMAL_SUCCESS)
       {
@@ -1881,14 +2119,14 @@ int main(int argc, const char **argv)
             fprintf(stderr, "Connecting camera stills port to encoder input port\n");
 
          // Now connect the camera to the encoder
-         status = connect_ports(camera_still_port, encoder_input_port, &state.encoder_connection);
+/*         status = connect_ports(camera_still_port, encoder_input_port, &state.encoder_connection);
 
          if (status != MMAL_SUCCESS)
          {
             vcos_log_error("%s: Failed to connect camera video port to encoder input", __func__);
             goto error;
          }
-
+*/
          // Set up our userdata - this is passed though to the callback where we need the information.
          // Null until we open our filename
          callback_data.file_handle = NULL;

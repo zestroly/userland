@@ -133,6 +133,15 @@ MMAL_STATUS_T raspipreview_create(RASPIPREVIEW_PARAMETERS *state)
          vcos_log_error("unable to set preview port parameters (%u)", status);
          goto error;
       }
+      status = mmal_component_create("vc.ril.isp",
+            &state->isp);
+      if (status != MMAL_SUCCESS && status != MMAL_ENOSYS)
+      {
+         vcos_log_error("unable to create isp component (%u)", status);
+         goto error;
+      }
+   status = mmal_component_enable(state->isp);
+
    }
 
    /* Enable component */
@@ -170,6 +179,11 @@ void raspipreview_destroy(RASPIPREVIEW_PARAMETERS *state)
       mmal_component_destroy(state->preview_component);
       state->preview_component = NULL;
    }
+ if(state->isp)
+ {
+   mmal_component_destroy(state->isp);
+   state->isp = NULL;
+ }
 }
 
 /**
