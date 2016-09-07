@@ -1155,6 +1155,10 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
    // We pass our file handle and other stuff in via the userdata field.
 
    PORT_USERDATA *pData = (PORT_USERDATA *)port->userdata;
+MMAL_PARAMETER_STATISTICS_T stats = {{MMAL_PARAMETER_STATISTICS, sizeof(stats)} };
+mmal_port_parameter_get(port, &stats.hdr);
+vcos_log_error("length %d, flags %04X. Stats say buf_count %u, frm_count %u",
+	buffer->length, buffer->flags, stats.buffer_count, stats.frame_count);
 
    if (pData)
    {
