@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 
 	if(argc < 7)
 	{
-		printf("Usage: %s <src w> <src h> <src encoding> <dst w> <dst h> <dst encoding>\n", argv[0]);
+		printf("Usage: %s <src w> <src h> <src encoding> <dst w> <dst h> <dst encoding> [disp rect x,y,w,h]\n", argv[0]);
 		exit(1);
 	}
 
@@ -70,11 +70,28 @@ int main(int argc, char *argv[])
 	mmal_component_enable(isp);
 	mmal_component_enable(render);
 
-	status = mmal_port_parameter_set_int32(source->output[0], MMAL_PARAMETER_VIDEO_SOURCE_PATTERN, MMAL_VIDEO_SOURCE_PATTERN_BLOCKS);
-	if(status != MMAL_SUCCESS)
+	if(argc > 7)
 	{
-		vcos_log_error("Failed to set source pattern");
-		goto destroy;
+		MMAL_DISPLAYREGION_T param;
+		int tmp;
+		param.hdr.id = MMAL_PARAMETER_DISPLAYREGION;
+		param.hdr.size = sizeof(MMAL_DISPLAYREGION_T);
+
+		tmp = sscanf(argv[7], "%d,%d,%d,%d",
+			&param.dest_rect.x, &param.dest_rect.y,
+			&param.dest_rect.width, &param.dest_rect.height);
+		if (tmp == 4)
+		{
+			param.set |= (MMAL_DISPLAY_SET_DEST_RECT | MMAL_DISPLAY_SET_FULLSCREEN);
+			param.fullscreen = 0;
+		}
+		else
+		{
+			param.set |= MMAL_DISPLAY_SET_FULLSCREEN;
+			param.fullscreen = 1;
+		}
+
+		status = mmal_port_parameter_set(render->input[0], &param.hdr);
 	}
 
 	format = source->output[0]->format;
@@ -90,6 +107,13 @@ int main(int argc, char *argv[])
 	if (status != MMAL_SUCCESS)
 	{
 		vcos_log_error("source format commit failed - %s", mmal_status_to_string(status));
+		goto destroy;
+	}
+
+	status = mmal_port_parameter_set_int32(source->output[0], MMAL_PARAMETER_VIDEO_SOURCE_PATTERN, MMAL_VIDEO_SOURCE_PATTERN_BLOCKS);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to set source pattern");
 		goto destroy;
 	}
 
