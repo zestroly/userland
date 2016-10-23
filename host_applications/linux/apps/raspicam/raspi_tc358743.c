@@ -67,14 +67,14 @@ struct sensor_regs {
 
 #define WIDTH 1280
 #define HEIGHT 720
-#define ENCODING MMAL_ENCODING_BGR24 //MMAL_ENCODING_YUYV
+#define ENCODING MMAL_ENCODING_BGR24 //MMAL_ENCODING_I420// //MMAL_ENCODING_YUYV
 
 #define UNPACK MMAL_CAMERA_RX_CONFIG_UNPACK_NONE
 #define PACK MMAL_CAMERA_RX_CONFIG_PACK_NONE
 
 #define I2C_ADDR 0x0F
 
-#define CSI_IMAGE_ID 0x24
+#define CSI_IMAGE_ID 0x00
 #define CSI_DATA_LANES 2
 
 static void i2c_rd(int fd, uint16_t reg, uint8_t *values, uint32_t n)
@@ -290,7 +290,7 @@ struct cmds_t cmds[] =
 };
 #define NUM_REGS_CMD (sizeof(cmds)/sizeof(cmds[0]))
 
-#define TOSHH2C_720P
+//#define TOSHH2C_720P
 
 #ifdef TOSHH2C_720P
 // 720P with quantization flag
@@ -311,7 +311,22 @@ static unsigned char TOSHH2C_DEFAULT_EDID[] = //{
    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x20";
+#else
+
+// 480P EDID
+static unsigned char TOSHH2C_DEFAULT_EDID[] = //{
+"\x00\xFF\xFF\xFF\xFF\xFF\xFF\x00\x52\x62\x88\x88\x00\x88\x88\x88"
+"\x1C\x15\x01\x03\x80\x00\x00\x78\x0A\xEE\x91\xA3\x54\x4C\x99\x26"
+"\x0F\x50\x54\x00\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+"\x01\x01\x01\x01\x01\x01\x8C\x0A\xD0\x8A\x20\xE0\x2D\x10\x10\x3E"
+"\x96\x00\x13\x8E\x21\x00\x00\x1E\x00\x00\x00\xFC\x00\x54\x6F\x73"
+"\x68\x69\x62\x61\x2D\x48\x32\x43\x0A\x20\x00\x00\x00\xFD\x00\x3B"
+"\x3D\x0F\x2E\x0F\x00\x0A\x20\x20\x20\x20\x20\x20\x00\x00\x00\x10"
+"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xC8";
+
 #endif
+
+
 
 struct cmds_t cmds2[] = 
 {
@@ -384,7 +399,7 @@ void start_camera_streaming(void)
    digitalWrite(41, 1); //Shutdown pin on B+ and Pi2
    digitalWrite(32, 1); //LED pin on B+ and Pi2
 #endif
-   fd = open("/dev/i2c-0", O_RDWR);
+   fd = open("/dev/i2c-1", O_RDWR);
    if (!fd)
    {
       vcos_log_error("Couldn't open I2C device");
@@ -480,7 +495,7 @@ void start_camera_streaming(void)
 void stop_camera_streaming(void)
 {
    int fd, i;
-   fd = open("/dev/i2c-0", O_RDWR);
+   fd = open("/dev/i2c-1", O_RDWR);
    if (!fd)
    {
       vcos_log_error("Couldn't open I2C device");
@@ -526,7 +541,7 @@ void stop_camera_streaming(void)
 }
 
 int running = 0;
-#if MANUAL_CONNECTION
+#ifdef MANUAL_CONNECTION
 static void callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
 {
 	static int count = 0;
@@ -556,15 +571,42 @@ static void callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
 }
 #endif
 
+/**
+ *  buffer header callback function for encoder
+ *
+ *  Callback will dump buffer data to the specific file
+ *
+ * @param port Pointer to port from which callback originated
+ * @param buffer mmal buffer header pointer
+ */
+static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
+{
+	MMAL_STATUS_T status;
+	vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
+
+	if (running)
+	{
+		mmal_buffer_header_release(buffer);
+		status = mmal_port_send_buffer(port, buffer);
+			if(status != MMAL_SUCCESS)
+			{
+				vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
+			}
+	}
+
+
+}
+
+
+
 int main (void)
 {
-	MMAL_COMPONENT_T *rawcam, *render;
+	MMAL_COMPONENT_T *rawcam, *render, *isp, *splitter, *encoder;
 	MMAL_STATUS_T status;
-	MMAL_PORT_T *output, *input;
+	MMAL_PORT_T *output, *input, *isp_input, *isp_output, *encoder_input, *encoder_output;
 	MMAL_POOL_T *pool;
 	MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
 	MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
-	int i;
 
 	bcm_host_init();
 	vcos_log_register("RaspiRaw", VCOS_LOG_CATEGORY);
@@ -578,12 +620,40 @@ int main (void)
 	status = mmal_component_create("vc.ril.video_render", &render);
 	if(status != MMAL_SUCCESS)
 	{
-		vcos_log_error("Failed to create rawcam");
+		vcos_log_error("Failed to create render");
 		return -1;
 	}
+	
+	status = mmal_component_create("vc.ril.isp", &isp);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to create isp");
+		return -1;
+	}
+	
+	status = mmal_component_create("vc.ril.video_splitter", &splitter);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to create isp");
+		return -1;
+	}
+	
+	status = mmal_component_create("vc.ril.video_encode", &encoder);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to create encoder");
+		return -1;
+	}
+	
 	output = rawcam->output[0];
+	isp_input = isp->input[0];
+	isp_output = isp->output[0];
+	encoder_input = encoder->input[0];
+	encoder_output = encoder->output[0];
 	input = render->input[0];
 
+
+// setup CSI configs on rawcam
 	status = mmal_port_parameter_get(output, &rx_cfg.hdr);
 	if(status != MMAL_SUCCESS)
 	{
@@ -604,23 +674,6 @@ int main (void)
 		goto component_destroy;
 	}
 
-	//Magic values copied from GPU driver.
-	rx_timing.timing1 = 0;
-	rx_timing.timing2 = 0;
-	rx_timing.timing3 = 0;
-	rx_timing.timing4 = 0;
-	rx_timing.timing5 = 0;
-	rx_timing.term1 = 0;
-	rx_timing.term2 = 0;
-	rx_timing.cpi_timing1 = 0;
-	rx_timing.cpi_timing2 = 0;
-	vcos_log_error("Set rx_timing");
-	status = mmal_port_parameter_set(output, &rx_timing.hdr);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set rx timing");
-		goto component_destroy;
-	}
 
 	vcos_log_error("Enable rawcam....");
 
@@ -637,13 +690,68 @@ int main (void)
 		goto component_disable;
 	}
 
+// end setup rawcam
+
+	vcos_log_error("Enable isp....");
+
+	status = mmal_component_enable(isp);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to enable");
+		goto component_destroy;
+	}
+	status = mmal_port_parameter_set_boolean(isp_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to set zero copy");
+		goto component_disable;
+	}
+
+	vcos_log_error("Enable splitter....");
+
+	status = mmal_component_enable(splitter);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to enable");
+		goto component_destroy;
+	}
+	status = mmal_port_parameter_set_boolean(splitter->output[0], MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to set zero copy");
+		goto component_disable;
+	}
+
+ 	splitter->output[0]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
+ 	splitter->output[0]->buffer_num = 8; //isp_output->buffer_num_recommended;
+     vcos_log_error("buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
+	status = mmal_port_format_commit(splitter->output[0]);
+
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed port_format_commit on splitter->output[0]");
+		goto component_disable;
+	}
+
+ 	splitter->output[1]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
+ 	splitter->output[1]->buffer_num = 8; //isp_output->buffer_num_recommended;
+     vcos_log_error("buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
+	status = mmal_port_format_commit(splitter->output[1]);
+
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed port_format_commit on splitter->output[1]");
+		goto component_disable;
+	}
+
+
 	output->format->es->video.crop.width = WIDTH;
 	output->format->es->video.crop.height = HEIGHT;
 	output->format->es->video.width = VCOS_ALIGN_UP(WIDTH, 32);
 	output->format->es->video.height = VCOS_ALIGN_UP(HEIGHT, 16);
 	output->format->encoding = ENCODING;
-	vcos_log_error("output p_fmt_commit...");
 	status = mmal_port_format_commit(output);
+
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed port_format_commit");
@@ -659,35 +767,234 @@ int main (void)
 		vcos_log_error("Failed port_format_commit");
 		goto component_disable;
 	}
+	// copy the format of the rawcam output to the resizer input
+	mmal_format_copy(isp_input->format, output->format);
+	isp_input->buffer_num = 8;
+	vcos_log_error("Setting isp input port format to the same as the rawcam output");
+	status = mmal_port_format_commit(isp_input);
+	if (status != MMAL_SUCCESS)
+	{
+		printf("Couldn't set isp input port format : error %d", status);
+	}
+	
+	// copy the isp input to the isp output
+	mmal_format_copy(isp_output->format, isp_input->format);
+	isp_output->format->encoding = MMAL_ENCODING_I420;
+	isp_output->format->es->video.width = WIDTH;
+	isp_output->format->es->video.height = HEIGHT;
+	isp_output->format->es->video.crop.x = 0;
+	isp_output->format->es->video.crop.y = 0;
+	isp_output->format->es->video.crop.width = WIDTH;
+	isp_output->format->es->video.crop.height = HEIGHT;
+ 	isp_output->buffer_size = 2764800; //isp_output->buffer_size_recommended;
+ 	isp_output->buffer_num = 8; //isp_output->buffer_num_recommended;
+     vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
+	vcos_log_error("Setting isp output port format");
+	status = mmal_port_format_commit(isp_output);
+	if (status != MMAL_SUCCESS)
+	{
+		printf("Couldn't set resizer output port format : error %d", status);
+	}
 
-#if MANUAL_CONNECTION
-	//If video_render doesn't ignore MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO, need to
-	//filter them in the connection, so have to do it manually.
-   status = mmal_format_full_copy(input->format, output->format);
-   if (status == MMAL_SUCCESS)
-      status = mmal_port_format_commit(input);
+//////////////////////////  Encoder setup
+
+	vcos_log_error("Setting encoder input port format to the same as the isp output");
+   mmal_format_copy(encoder_input->format, isp_output->format);
+   // Commit the port changes to the output port
+   status = mmal_port_format_commit(encoder_input);
+
    if (status != MMAL_SUCCESS)
    {
-      vcos_log_error("format not set on render input port");
-      goto error;
+      vcos_log_error("Unable to set format on encoder input port");
    }
 
-	vcos_log_error("Create pool of %d buffers of size %d", output->buffer_num, output->buffer_size);
-	pool = mmal_port_pool_create(output, output->buffer_num, output->buffer_size);
+	vcos_log_error("Setting encoder output port format to the same as the encoder input");
+// We want same format on input and output
+   mmal_format_copy(encoder_output->format, encoder_input->format);
+
+   // Only supporting H264 at the moment
+   encoder_output->format->encoding = MMAL_ENCODING_H264;
+
+   encoder_output->format->bitrate = 17000000;
+   encoder_output->buffer_size = 2764800; //encoder_output->buffer_size_recommended;
+
+   if (encoder_output->buffer_size < encoder_output->buffer_size_min)
+      encoder_output->buffer_size = encoder_output->buffer_size_min;
+
+   encoder_output->buffer_num = 8; //encoder_output->buffer_num_recommended;
+
+   if (encoder_output->buffer_num < encoder_output->buffer_num_min)
+      encoder_output->buffer_num = encoder_output->buffer_num_min;
+
+   // We need to set the frame rate on output to 0, to ensure it gets
+   // updated correctly from the input framerate when port connected
+   encoder_output->format->es->video.frame_rate.num = 0;
+   encoder_output->format->es->video.frame_rate.den = 1;
+
+   // Commit the port changes to the output port
+   status = mmal_port_format_commit(encoder_output);
+
+   if (status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Unable to set format on encoder output port");
+   }
+
+      MMAL_PARAMETER_VIDEO_PROFILE_T  param;
+      param.hdr.id = MMAL_PARAMETER_PROFILE;
+      param.hdr.size = sizeof(param);
+
+      param.profile[0].profile = MMAL_VIDEO_PROFILE_H264_HIGH;//state->profile;
+      param.profile[0].level = MMAL_VIDEO_LEVEL_H264_4; // This is the only value supported
+
+      status = mmal_port_parameter_set(encoder_output, &param.hdr);
+      if (status != MMAL_SUCCESS)
+      {
+         vcos_log_error("Unable to set H264 profile");
+      }
+
+   if (mmal_port_parameter_set_boolean(encoder_input, MMAL_PARAMETER_VIDEO_IMMUTABLE_INPUT, 1) != MMAL_SUCCESS)
+   {
+      vcos_log_error("Unable to set immutable input flag");
+      // Continue rather than abort..
+   }
+
+   //set INLINE HEADER flag to generate SPS and PPS for every IDR if requested
+   if (mmal_port_parameter_set_boolean(encoder_output, MMAL_PARAMETER_VIDEO_ENCODE_INLINE_HEADER, 0) != MMAL_SUCCESS)
+   {
+      vcos_log_error("failed to set INLINE HEADER FLAG parameters");
+      // Continue rather than abort..
+   }
+
+   //set INLINE VECTORS flag to request motion vector estimates
+   if (mmal_port_parameter_set_boolean(encoder_output, MMAL_PARAMETER_VIDEO_ENCODE_INLINE_VECTORS, 0) != MMAL_SUCCESS)
+   {
+      vcos_log_error("failed to set INLINE VECTORS parameters");
+      // Continue rather than abort..
+   }
+
+	encoder_input->format->encoding = MMAL_ENCODING_RGB24;
+   // Commit the port changes to the input port
+   status = mmal_port_format_commit(encoder_input);
+
+   if (status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Unable to set format on video encoder input port");
+   }	
+
+	vcos_log_error("Enable encoder....");
+
+	status = mmal_component_enable(encoder);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to enable");
+		goto component_destroy;
+	}
+	status = mmal_port_parameter_set_boolean(encoder_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to set zero copy");
+		goto component_disable;
+	}
+	
+
+
+   
+   
+//////////////////////////   Encoder setup	
+	
+/*
+	vcos_log_error("rawcam supported encodings:");
+	display_supported_encodings(output);
+	vcos_log_error("isp input supported encodings:");
+	display_supported_encodings(isp_input);
+	vcos_log_error("isp output supported encodings:");
+	display_supported_encodings(isp_output);
+	vcos_log_error("encoder input supported encodings:");
+	display_supported_encodings(encoder_input);
+	vcos_log_error("encoder output supported encodings:");
+	display_supported_encodings(encoder_output);
+	vcos_log_error("render supported encodings:");
+	display_supported_encodings(input);
+*/
+	
+
+   MMAL_CONNECTION_T *connection[4] = {0};
+
+	status = mmal_port_parameter_set_boolean(input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to set zero copy on video_render");
+		goto component_disable;
+	}
+
+
+
+	vcos_log_error("Create connections....");
+	vcos_log_error("Create connection rawcam output to isp input....");
+	status =  mmal_connection_create(&connection[0], output, isp_input, MMAL_CONNECTION_FLAG_TUNNELLING);
+	vcos_log_error("Create connection isp output to splitter input....");
+	status =  mmal_connection_create(&connection[1], isp_output, splitter->input[0], MMAL_CONNECTION_FLAG_TUNNELLING);
+	vcos_log_error("Create connection splitter output to render input....");
+	status =  mmal_connection_create(&connection[2], splitter->output[0], input, MMAL_CONNECTION_FLAG_TUNNELLING);
+	vcos_log_error("Create connection splitter output2 to encoder input....");
+	status =  mmal_connection_create(&connection[3], splitter->output[1], encoder_input, MMAL_CONNECTION_FLAG_TUNNELLING);
+
+
+   if (status == MMAL_SUCCESS)
+   {
+	vcos_log_error("Enable connection[0]...");
+    vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
+      status =  mmal_connection_enable(connection[0]);
+      if (status != MMAL_SUCCESS)
+      {
+         mmal_connection_destroy(connection[0]);
+		}
+	vcos_log_error("Enable connection[1]...");
+    vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
+     status =  mmal_connection_enable(connection[1]);
+      if (status != MMAL_SUCCESS)
+      {
+         mmal_connection_destroy(connection[1]);
+	  }
+	  
+	vcos_log_error("Enable connection[2]...");
+    vcos_log_error("buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
+     status =  mmal_connection_enable(connection[2]);
+      if (status != MMAL_SUCCESS)
+      {
+         mmal_connection_destroy(connection[2]);
+	  }
+
+	vcos_log_error("Enable connection[3]...");
+    vcos_log_error("buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
+     status =  mmal_connection_enable(connection[3]);
+      if (status != MMAL_SUCCESS)
+      {
+         mmal_connection_destroy(connection[3]);
+	  }
+	}
+
+
+
+//////
+
+	vcos_log_error("Create pool of %d buffers of size %d", encoder_output->buffer_num, encoder_output->buffer_size);
+	pool = mmal_port_pool_create(encoder_output, encoder_output->buffer_num, encoder_output->buffer_size);
 	if(!pool)
 	{
 		vcos_log_error("Failed to create pool");
 		goto component_disable;
 	}
 
-	status = mmal_port_enable(output, callback);
+	status = mmal_port_enable(encoder_output, encoder_buffer_callback);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to enable port");
-		goto pool_destroy;
 	}
+	
 	running = 1;
-	for(i=0; i<output->buffer_num; i++)
+	int i;
+	for(i=0; i<encoder_output->buffer_num; i++)
 	{
 		MMAL_BUFFER_HEADER_T *buffer = mmal_queue_get(pool->queue);
 
@@ -696,7 +1003,7 @@ int main (void)
 			vcos_log_error("Where'd my buffer go?!");
 			goto port_disable;
 		}
-		status = mmal_port_send_buffer(output, buffer);
+		status = mmal_port_send_buffer(encoder_output, buffer);
 		if(status != MMAL_SUCCESS)
 		{
 			vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
@@ -704,69 +1011,181 @@ int main (void)
 		}
 		vcos_log_error("Sent buffer %p", buffer);
 	}
-#else
-	//If video_render does ignore MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO (firmware hack!), can
-   //use a mmal_connection
-   MMAL_CONNECTION_T *connection;
 
-	status = mmal_port_parameter_set_boolean(input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set zero copy on video_render");
-		goto component_disable;
-	}
-	vcos_log_error("Create connection....");
-   status =  mmal_connection_create(&connection, output, input, MMAL_CONNECTION_FLAG_TUNNELLING);
 
-   if (status == MMAL_SUCCESS)
-   {
-	vcos_log_error("Enable connection...");
-    vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
-      status =  mmal_connection_enable(connection);
-      if (status != MMAL_SUCCESS)
-         mmal_connection_destroy(connection);
-   }
 
-#endif
+
+
+
+
+
+/////////
+
+
+
+
+
 
 
 	vcos_log_error("All done. Start streaming...");
-	start_camera_streaming();
+	//start_camera_streaming();
 	vcos_log_error("View!");
 
-	vcos_sleep(10000);
+	vcos_sleep(20000);
 	running = 0;
 
 	vcos_log_error("Stopping streaming...");
-	stop_camera_streaming();
+	//stop_camera_streaming();
 
 port_disable:
-#if MANUAL_CONNECTION
-	status = mmal_port_disable(output);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to disable port");
-		return -1;
-	}
-pool_destroy:
-	mmal_port_pool_destroy(output, pool);
-#else
-	mmal_connection_disable(connection);
-	mmal_connection_destroy(connection);
-#endif
+
+	mmal_connection_disable(connection[0]);
+	mmal_connection_destroy(connection[0]);
+
+	mmal_connection_disable(connection[1]);
+	mmal_connection_destroy(connection[1]);
+
+	mmal_connection_disable(connection[2]);
+	mmal_connection_destroy(connection[2]);
+
+	mmal_connection_disable(connection[3]);
+	mmal_connection_destroy(connection[3]);
+
 component_disable:
 	status = mmal_component_disable(rawcam);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to disable rawcam");
 	}
+	status = mmal_component_disable(isp);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to disable isp");
+	}
 	status = mmal_component_disable(render);
 	if(status != MMAL_SUCCESS)
 	{
 		vcos_log_error("Failed to disable render");
 	}
+	
+	status = mmal_component_disable(splitter);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to disable splitter");
+	}
+	
+	status = mmal_component_disable(encoder);
+	if(status != MMAL_SUCCESS)
+	{
+		vcos_log_error("Failed to disable encoder");
+	}	
+	
 component_destroy:
 	mmal_component_destroy(rawcam);
+	mmal_component_destroy(isp);
 	mmal_component_destroy(render);
+	mmal_component_destroy(splitter);
+	mmal_component_destroy(encoder);
+	
 	return 0;
+}
+
+
+
+
+
+
+
+	#define MAX_ENCODINGS_NUM 20
+	typedef struct {
+		MMAL_PARAMETER_HEADER_T header;
+		MMAL_FOURCC_T encodings[MAX_ENCODINGS_NUM];
+	} MMAL_SUPPORTED_ENCODINGS_T;
+
+void display_supported_encodings(MMAL_PORT_T *port)
+{
+	
+
+
+	
+   MMAL_SUPPORTED_ENCODINGS_T sup_encodings = {{MMAL_PARAMETER_SUPPORTED_ENCODINGS, sizeof(sup_encodings)}, {0}};
+   if (mmal_port_parameter_get(port, &sup_encodings.header) == MMAL_SUCCESS)
+   {
+      int i;
+      int num_encodings = (sup_encodings.header.size - sizeof(sup_encodings.header)) /
+          sizeof(sup_encodings.encodings[0]);
+      for (i=0; i<num_encodings; i++)
+      {
+         switch (sup_encodings.encodings[i])
+         {
+			case MMAL_ENCODING_I420:
+				vcos_log_error("MMAL_ENCODING_I420");
+			break;
+			case MMAL_ENCODING_I420_SLICE:
+				vcos_log_error("MMAL_ENCODING_I420_SLICE");
+			break;
+			case MMAL_ENCODING_YV12:
+				vcos_log_error("MMAL_ENCODING_YV12");
+			break;
+			case MMAL_ENCODING_I422:
+				vcos_log_error("MMAL_ENCODING_I422");
+			break;
+			case MMAL_ENCODING_I422_SLICE:
+				vcos_log_error("MMAL_ENCODING_I422_SLICE");
+			break;
+			case MMAL_ENCODING_YUYV:
+				vcos_log_error("MMAL_ENCODING_YUYV");
+			break;
+			case MMAL_ENCODING_YVYU:
+				vcos_log_error("MMAL_ENCODING_YVYU");
+			break;
+			case MMAL_ENCODING_UYVY:
+				vcos_log_error("MMAL_ENCODING_UYVY");
+			break;
+			case MMAL_ENCODING_VYUY:
+				vcos_log_error("MMAL_ENCODING_VYUY");
+			break;
+			case MMAL_ENCODING_NV12:
+				vcos_log_error("MMAL_ENCODING_NV12");
+			break;
+			case MMAL_ENCODING_NV21:
+				vcos_log_error("MMAL_ENCODING_NV21");
+			break;
+			case MMAL_ENCODING_ARGB:
+				vcos_log_error("MMAL_ENCODING_ARGB");
+			break;
+			case MMAL_ENCODING_RGBA:
+				vcos_log_error("MMAL_ENCODING_RGBA");
+			break;
+			case MMAL_ENCODING_ABGR:
+				vcos_log_error("MMAL_ENCODING_ABGR");
+			break;
+			case MMAL_ENCODING_BGRA:
+				vcos_log_error("MMAL_ENCODING_BGRA");
+			break;
+			case MMAL_ENCODING_RGB16:
+				vcos_log_error("MMAL_ENCODING_RGB16");
+			break;
+			case MMAL_ENCODING_RGB24:
+				vcos_log_error("MMAL_ENCODING_RGB24");
+			break;
+			case MMAL_ENCODING_RGB32:
+				vcos_log_error("MMAL_ENCODING_RGB32");
+			break;
+			case MMAL_ENCODING_BGR16:
+				vcos_log_error("MMAL_ENCODING_BGR16");
+			break;
+			case MMAL_ENCODING_BGR24:
+				vcos_log_error("MMAL_ENCODING_BGR24");
+			break;
+			case MMAL_ENCODING_BGR32:
+				vcos_log_error("MMAL_ENCODING_BGR32");
+			break;
+		 }
+      }
+   }
+   else
+   {
+	   vcos_log_error("Failed to get supported encodings");
+   }
 }
