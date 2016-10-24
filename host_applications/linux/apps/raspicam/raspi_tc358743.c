@@ -32,6 +32,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <fcntl.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 //#include <wiringPi.h>
 //#include <wiringPiI2C.h>
 #include <linux/i2c.h>
@@ -583,20 +588,91 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
 {
 	MMAL_STATUS_T status;
 	vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
-
+	//cos_log_error("File handle: %s", port->userdata);
+	int bytes_written = buffer->length;
+	
 	if (running)
 	{
+
+		bytes_written = fwrite(buffer->data, 1, buffer->length, port->userdata);
+		fflush(port->userdata);
+
+		mmal_buffer_header_mem_unlock(buffer);
+
+		if (bytes_written != buffer->length)
+		{
+			vcos_log_error("Failed to write buffer data (%d from %d)- aborting", bytes_written, buffer->length);
+		}
+		
 		mmal_buffer_header_release(buffer);
 		status = mmal_port_send_buffer(port, buffer);
-			if(status != MMAL_SUCCESS)
-			{
-				vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
-			}
+		if(status != MMAL_SUCCESS)
+		{
+			vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
+		}
 	}
-
-
 }
 
+
+/**
+ * Open a file based on the settings in state
+ *
+ * @param state Pointer to state
+ */
+static FILE *open_filename(char *filename[])
+{
+   FILE *new_handle = NULL;
+
+   if (filename)
+   {
+      int network = 0, socktype;
+      if(!strncmp("tcp://", filename, 6))
+      {
+         network = 1;
+         socktype = SOCK_STREAM;
+      }
+      if(!strncmp("udp://", filename, 6))
+      {
+         network = 1;
+         socktype = SOCK_DGRAM;
+      }
+      if(network)
+      {
+         filename += 6;
+         char *colon;
+         colon = strchr(filename, ':');
+         int sfd = socket(AF_INET, socktype, 0);
+         if(sfd < 0)
+         {
+              perror("socket");
+         }
+
+         unsigned short port;
+         sscanf(colon + 1, "%hu", &port);
+         *colon = 0;
+
+         fprintf(stderr, "Connecting to %s:%hu\n", filename, port);
+         
+         struct sockaddr_in saddr;
+         saddr.sin_family = AF_INET;
+         saddr.sin_port = htons(port);
+         inet_aton(filename, &saddr.sin_addr);
+
+         if(connect(sfd, (struct sockaddr *)&saddr, sizeof(struct sockaddr_in)) < 0)
+         {
+            perror("connect");
+         }
+
+         new_handle = fdopen(sfd, "w");
+      }
+      else
+      {
+         new_handle = fopen(filename, "wb");
+      }
+   }
+
+   return new_handle;
+}
 
 
 int main (void)
@@ -607,6 +683,7 @@ int main (void)
 	MMAL_POOL_T *pool;
 	MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
 	MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
+	FILE *file_handle = NULL;
 
 	bcm_host_init();
 	vcos_log_register("RaspiRaw", VCOS_LOG_CATEGORY);
@@ -828,7 +905,7 @@ int main (void)
 
    // We need to set the frame rate on output to 0, to ensure it gets
    // updated correctly from the input framerate when port connected
-   encoder_output->format->es->video.frame_rate.num = 0;
+   encoder_output->format->es->video.frame_rate.num = 60;//0;
    encoder_output->format->es->video.frame_rate.den = 1;
 
    // Commit the port changes to the output port
@@ -975,6 +1052,10 @@ int main (void)
 	}
 
 
+
+	// open h264 file and put the file handle in userdata for the encoder output port
+	
+	encoder_output->userdata = open_filename("test_encode.h264");
 
 //////
 
