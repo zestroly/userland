@@ -84,114 +84,114 @@ struct sensor_regs {
 
 static void i2c_rd(int fd, uint16_t reg, uint8_t *values, uint32_t n)
 {
-	int err;
-	uint8_t buf[2] = { reg >> 8, reg & 0xff };
-	struct i2c_rdwr_ioctl_data msgset;
-	struct i2c_msg msgs[2] = {
-		{
-			.addr = I2C_ADDR,
-			.flags = 0,
-			.len = 2,
-			.buf = buf,
-		},
-		{
-			.addr = I2C_ADDR,
-			.flags = I2C_M_RD,
-			.len = n,
-			.buf = values,
-		},
-	};
+   int err;
+   uint8_t buf[2] = { reg >> 8, reg & 0xff };
+   struct i2c_rdwr_ioctl_data msgset;
+   struct i2c_msg msgs[2] = {
+      {
+         .addr = I2C_ADDR,
+         .flags = 0,
+         .len = 2,
+         .buf = buf,
+      },
+      {
+         .addr = I2C_ADDR,
+         .flags = I2C_M_RD,
+         .len = n,
+         .buf = values,
+      },
+   };
 
-	msgset.msgs = msgs;
-	msgset.nmsgs = 2;
+   msgset.msgs = msgs;
+   msgset.nmsgs = 2;
 
-	err = ioctl(fd, I2C_RDWR, &msgset);
+   err = ioctl(fd, I2C_RDWR, &msgset);
 }
 
 static void i2c_wr(int fd, uint16_t reg, uint8_t *values, uint32_t n)
 {
-	uint8_t data[1024];
-	int err, i;
-	struct i2c_msg msg;
-	struct i2c_rdwr_ioctl_data msgset;
+   uint8_t data[1024];
+   int err, i;
+   struct i2c_msg msg;
+   struct i2c_rdwr_ioctl_data msgset;
 
-	if ((2 + n) > sizeof(data))
-		vcos_log_error("i2c wr reg=%04x: len=%d is too big!\n",
-			  reg, 2 + n);
+   if ((2 + n) > sizeof(data))
+      vcos_log_error("i2c wr reg=%04x: len=%d is too big!\n",
+           reg, 2 + n);
 
-	msg.addr = I2C_ADDR;
-	msg.buf = data;
-	msg.len = 2 + n;
-	msg.flags = 0;
+   msg.addr = I2C_ADDR;
+   msg.buf = data;
+   msg.len = 2 + n;
+   msg.flags = 0;
 
-	data[0] = reg >> 8;
-	data[1] = reg & 0xff;
+   data[0] = reg >> 8;
+   data[1] = reg & 0xff;
 
-	for (i = 0; i < n; i++)
-		data[2 + i] = values[i];
+   for (i = 0; i < n; i++)
+      data[2 + i] = values[i];
 
-	msgset.msgs = &msg;
-	msgset.nmsgs = 1;
+   msgset.msgs = &msg;
+   msgset.nmsgs = 1;
 
-	err = ioctl(fd, I2C_RDWR, &msgset);
-	if (err != 1) {
-		vcos_log_error("%s: writing register 0x%x from 0x%x failed\n",
-				__func__, reg, I2C_ADDR);
-		return;
-	}
+   err = ioctl(fd, I2C_RDWR, &msgset);
+   if (err != 1) {
+      vcos_log_error("%s: writing register 0x%x from 0x%x failed\n",
+            __func__, reg, I2C_ADDR);
+      return;
+   }
 }
 
 static u8 i2c_rd8(int fd, u16 reg)
 {
-	u8 val;
+   u8 val;
 
-	i2c_rd(fd, reg, &val, 1);
+   i2c_rd(fd, reg, &val, 1);
 
-	return val;
+   return val;
 }
 
 static void i2c_wr8(int fd, u16 reg, u8 val)
 {
-	i2c_wr(fd, reg, &val, 1);
+   i2c_wr(fd, reg, &val, 1);
 }
 
 static void i2c_wr8_and_or(int fd, u16 reg,
-		u8 mask, u8 val)
+      u8 mask, u8 val)
 {
-	i2c_wr8(fd, reg, (i2c_rd8(fd, reg) & mask) | val);
+   i2c_wr8(fd, reg, (i2c_rd8(fd, reg) & mask) | val);
 }
 
 static u16 i2c_rd16(int fd, u16 reg)
 {
-	u16 val;
+   u16 val;
 
-	i2c_rd(fd, reg, (u8 *)&val, 2);
+   i2c_rd(fd, reg, (u8 *)&val, 2);
 
-	return val;
+   return val;
 }
 
 static void i2c_wr16(int fd, u16 reg, u16 val)
 {
-	i2c_wr(fd, reg, (u8 *)&val, 2);
+   i2c_wr(fd, reg, (u8 *)&val, 2);
 }
 
 static void i2c_wr16_and_or(int fd, u16 reg, u16 mask, u16 val)
 {
-	i2c_wr16(fd, reg, (i2c_rd16(fd, reg) & mask) | val);
+   i2c_wr16(fd, reg, (i2c_rd16(fd, reg) & mask) | val);
 }
 
 static u32 i2c_rd32(int fd, u16 reg)
 {
-	u32 val;
+   u32 val;
 
-	i2c_rd(fd, reg, (u8 *)&val, 4);
+   i2c_rd(fd, reg, (u8 *)&val, 4);
 
-	return val;
+   return val;
 }
 
 static void i2c_wr32(int fd, u16 reg, u32 val)
 {
-	i2c_wr(fd, reg, (u8 *)&val, 4);
+   i2c_wr(fd, reg, (u8 *)&val, 4);
 }
 
 #define CC_RGB_PASSTHROUGH      1
@@ -230,68 +230,68 @@ static void i2c_wr32(int fd, u16 reg, u32 val)
 #endif
 
 struct cmds_t {
-	uint16_t addr;
-	uint32_t value;
-	int num_bytes;
+   uint16_t addr;
+   uint32_t value;
+   int num_bytes;
 };
 struct cmds_t cmds[] = 
 {
    // Turn off power and put in reset
    // handle.first_boot = VC_FALSE;
-	{0x0002, 0x0F00, 2},		// Assert Reset, [0] = 0: Exit Sleep, wait
+   {0x0002, 0x0F00, 2},    // Assert Reset, [0] = 0: Exit Sleep, wait
 
-    {0x0000, 1, 0xFFFF}, 		// V054 requires us to wait 1ms for PLL to lock
-	{0x0002, 0x0000, 2},		// Release Reset, Exit Sleep
-	{0x0006, 0x0008, 2},		// FIFO level
-	{0x0008, 0x005f, 2},		// Audio buffer level -- 96 bytes = 0x5F + 1
-	{0x0014, 0xFFFF, 2},	    // Clear HDMI Rx, CSI Tx and System Interrupt Status
-	{0x0016, 0x051f, 2},		// Enable HDMI-Rx Interrupt (bit 9), Sys interrupt (bit 5). Disable others. 11-15, 6-7 reserved
-	{0x0020, 0x8111, 2},	       // PRD[15:12], FBD[8:0]
-	{0x0022, 0x0213, 2},		// FRS[11:10], LBWS[9:8]= 2, Clock Enable[4] = 1,  ResetB[1] = 1,  PLL En[0]
-	{0x0004, r0004,  2},		// PwrIso[15], 422 output, send infoframe
-	{0x0140, 0x0,    4},		//Enable CSI-2 Clock lane
-	{0x0144, 0x0,    4},		//Enable CSI-2 Data lane 0
-	{0x0148, 0x0,    4},		//Enable CSI-2 Data lane 1
-	{0x014C, 0x1,    4},		//Disable CSI-2 Data lane 2
-	{0x0150, 0x1,    4},		//Disable CSI-2 Data lane 3
+   {0x0000, 1, 0xFFFF},      // V054 requires us to wait 1ms for PLL to lock
+   {0x0002, 0x0000, 2},    // Release Reset, Exit Sleep
+   {0x0006, 0x0008, 2},    // FIFO level
+   {0x0008, 0x005f, 2},    // Audio buffer level -- 96 bytes = 0x5F + 1
+   {0x0014, 0xFFFF, 2},     // Clear HDMI Rx, CSI Tx and System Interrupt Status
+   {0x0016, 0x051f, 2},    // Enable HDMI-Rx Interrupt (bit 9), Sys interrupt (bit 5). Disable others. 11-15, 6-7 reserved
+   {0x0020, 0x8111, 2},        // PRD[15:12], FBD[8:0]
+   {0x0022, 0x0213, 2},    // FRS[11:10], LBWS[9:8]= 2, Clock Enable[4] = 1,  ResetB[1] = 1,  PLL En[0]
+   {0x0004, r0004,  2},    // PwrIso[15], 422 output, send infoframe
+   {0x0140, 0x0,    4},    //Enable CSI-2 Clock lane
+   {0x0144, 0x0,    4},    //Enable CSI-2 Data lane 0
+   {0x0148, 0x0,    4},    //Enable CSI-2 Data lane 1
+   {0x014C, 0x1,    4},    //Disable CSI-2 Data lane 2
+   {0x0150, 0x1,    4},    //Disable CSI-2 Data lane 3
 
-	{0x0210, 0x00002988, 4},  	// LP11 = 100 us for D-PHY Rx Init
-	{0x0214, 0x00000005, 4},	// LP Tx Count[10:0]
-	{0x0218, 0x00001d04, 4},	// TxClk_Zero[15:8]
-	{0x021C, 0x00000002, 4},   // TClk_Trail =
-	{0x0220, 0x00000504, 4},   // HS_Zero[14:8] =
-	{0x0224, 0x00004600, 4},   // TWAKEUP Counter[15:0]
-	{0x0228, 0x0000000A, 4},   // TxCLk_PostCnt[10:0]
-	{0x022C, 0x00000004, 4},   // THS_Trail =
-	{0x0234, 0x0000001F, 4},   // Enable Voltage Regulator for CSI (4 Data + Clk) Lanes
-	{0x0204, 0x00000001, 4},   // Start PPI
+   {0x0210, 0x00002988, 4},   // LP11 = 100 us for D-PHY Rx Init
+   {0x0214, 0x00000005, 4},   // LP Tx Count[10:0]
+   {0x0218, 0x00001d04, 4},   // TxClk_Zero[15:8]
+   {0x021C, 0x00000002, 4},   // TClk_Trail =
+   {0x0220, 0x00000504, 4},   // HS_Zero[14:8] =
+   {0x0224, 0x00004600, 4},   // TWAKEUP Counter[15:0]
+   {0x0228, 0x0000000A, 4},   // TxCLk_PostCnt[10:0]
+   {0x022C, 0x00000004, 4},   // THS_Trail =
+   {0x0234, 0x0000001F, 4},   // Enable Voltage Regulator for CSI (4 Data + Clk) Lanes
+   {0x0204, 0x00000001, 4},   // Start PPI
 
-	{0x0518, 0x00000001, 4},   // Start CSI-2 Tx
-	{0x0500, 0xA3008082, 4},   // SetBit[31:29]
-	   //
-	   //    1010 0011 0000 0000    1000 0000 1010 0010
+   {0x0518, 0x00000001, 4},   // Start CSI-2 Tx
+   {0x0500, 0xA3008082, 4},   // SetBit[31:29]
+      //
+      //    1010 0011 0000 0000    1000 0000 1010 0010
 
-	{0x8502, 0x01, 1},		// Enable HPD DDC Power Interrupt
-	{0x8512, 0xFE, 1},		// Disable HPD DDC Power Interrupt Mask
-	{0x8513, (uint8_t) ~0x20, 1},		// Receive interrupts for video format change (bit 5)
-	{0x8515, (uint8_t) ~0x02, 1},		// Receive interrupts for format change (bit 1)
+   {0x8502, 0x01, 1},      // Enable HPD DDC Power Interrupt
+   {0x8512, 0xFE, 1},      // Disable HPD DDC Power Interrupt Mask
+   {0x8513, (uint8_t) ~0x20, 1},    // Receive interrupts for video format change (bit 5)
+   {0x8515, (uint8_t) ~0x02, 1},    // Receive interrupts for format change (bit 1)
 
-	{0x8531, 0x01, 1},		// [1] = 1: RefClk 42 MHz, [0] = 1, DDC5V Auto detection
-	{0x8540, 0x0A8C, 2},	// SysClk Freq count with RefClk = 27 MHz (0x1068 for 42 MHz, default)
-	{0x8630, 0x00041eb0, 4},   // Audio FS Lock Detect Control [19:0]: 041EB0 for 27 MHz, 0668A0 for 42 MHz (default)
-	{0x8670, 0x01, 1},		   // SysClk 27/42 MHz: 00:= 42 MHz
+   {0x8531, 0x01, 1},      // [1] = 1: RefClk 42 MHz, [0] = 1, DDC5V Auto detection
+   {0x8540, 0x0A8C, 2}, // SysClk Freq count with RefClk = 27 MHz (0x1068 for 42 MHz, default)
+   {0x8630, 0x00041eb0, 4},   // Audio FS Lock Detect Control [19:0]: 041EB0 for 27 MHz, 0668A0 for 42 MHz (default)
+   {0x8670, 0x01, 1},         // SysClk 27/42 MHz: 00:= 42 MHz
 
-	{0x8532, 0x80, 1},		// PHY_AUTO_RST[7:4] = 1600 us, PHY_Range_Mode = 12.5 us
-	{0x8536, 0x40, 1},		// [7:4] Ibias: TBD, [3:0] BGR_CNT: Default
-	{0x853F, 0x0A, 1},		// [3:0] = 0x0a: PHY TMDS CLK line squelch level: 50 uA
+   {0x8532, 0x80, 1},      // PHY_AUTO_RST[7:4] = 1600 us, PHY_Range_Mode = 12.5 us
+   {0x8536, 0x40, 1},      // [7:4] Ibias: TBD, [3:0] BGR_CNT: Default
+   {0x853F, 0x0A, 1},      // [3:0] = 0x0a: PHY TMDS CLK line squelch level: 50 uA
 
-	{0x8543, 0x32, 1},		// [5:4] = 2'b11: 5V Comp, [1:0] = 10, DDC 5V active detect delay setting: 100 ms
-	{0x8544, 0x10, 1},		// DDC5V detection interlock -- enable
-	{0x8545, 0x31, 1},		//  [5:4] = 2'b11: Audio PLL charge pump setting to Normal, [0] = 1: DAC/PLL Power On
-	{0x8546, 0x2D, 1},		// [7:0] = 0x2D: AVMUTE automatic clear setting (when in MUTE and no AVMUTE CMD received) 45 * 100 ms
+   {0x8543, 0x32, 1},      // [5:4] = 2'b11: 5V Comp, [1:0] = 10, DDC 5V active detect delay setting: 100 ms
+   {0x8544, 0x10, 1},      // DDC5V detection interlock -- enable
+   {0x8545, 0x31, 1},      //  [5:4] = 2'b11: Audio PLL charge pump setting to Normal, [0] = 1: DAC/PLL Power On
+   {0x8546, 0x2D, 1},      // [7:0] = 0x2D: AVMUTE automatic clear setting (when in MUTE and no AVMUTE CMD received) 45 * 100 ms
 
-	{0x85C7, 0x01, 1},		// [6:4] EDID_SPEED: 100 KHz, [1:0] EDID_MODE: Internal EDID-RAM & DDC2B mode
-	{0x85CB, 0x01, 1},		// EDID Data size read from EEPROM EDID_LEN[10:8] = 0x01, 256-Byte
+   {0x85C7, 0x01, 1},      // [6:4] EDID_SPEED: 100 KHz, [1:0] EDID_MODE: Internal EDID-RAM & DDC2B mode
+   {0x85CB, 0x01, 1},      // EDID Data size read from EEPROM EDID_LEN[10:8] = 0x01, 256-Byte
 };
 #define NUM_REGS_CMD (sizeof(cmds)/sizeof(cmds[0]))
 
@@ -335,46 +335,46 @@ static unsigned char TOSHH2C_DEFAULT_EDID[] = //{
 
 struct cmds_t cmds2[] = 
 {
-	/* HDMI specification requires HPD to be pulsed low for 100ms when EDID changed */
-	{0x8544, 0x01, 1},		// DDC5V detection interlock -- disable
-	{0x8544, 0x00, 1},		// DDC5V detection interlock -- pulse low
+   /* HDMI specification requires HPD to be pulsed low for 100ms when EDID changed */
+   {0x8544, 0x01, 1},      // DDC5V detection interlock -- disable
+   {0x8544, 0x00, 1},      // DDC5V detection interlock -- pulse low
 
-	{0x0000, 100, 0xFFFF},	// sleep
-	{0x8544, 0x10, 1},		// DDC5V detection interlock -- enable
-	 
-	{0x85D1, 0x01, 1},		   // Key loading command
-	{0x8560, 0x24, 1},		   // KSV Auto Clear Mode
-	{0x8563, 0x11, 1},		   // EESS_Err auto-unAuth
-	{0x8564, 0x0F, 1},		// DI_Err (Data Island Error) auto-unAuth
+   {0x0000, 100, 0xFFFF},  // sleep
+   {0x8544, 0x10, 1},      // DDC5V detection interlock -- enable
 
-	   // RGB888 to YUV422 conversion (must)
-	{0x8574, r8574, 1},		
-	{0x8573, r8573, 1},		   // OUT YUV444[7]
-	   // 1010 0001
-	{0x8576, r8576, 1},		   // [7:5] = YCbCr601 Limited ? 3'b011 : 3'b101 (YCbCr 709 Limited)
+   {0x85D1, 0x01, 1},         // Key loading command
+   {0x8560, 0x24, 1},         // KSV Auto Clear Mode
+   {0x8563, 0x11, 1},         // EESS_Err auto-unAuth
+   {0x8564, 0x0F, 1},      // DI_Err (Data Island Error) auto-unAuth
 
-	{0x8600, 0x00, 1},		// Forced Mute Off, Set Auto Mute On
-	{0x8602, 0xF3, 1},		// AUTO Mute (AB_sel, PCM/NLPCM_chg, FS_chg, PX_chg, PX_off, DVI)
-	{0x8603, 0x02, 1},		   // AUTO Mute (AVMUTE)
-	{0x8604, 0x0C, 1},		// AUTO Play (mute-->BufInit-->play)
-	{0x8606, 0x05, 1},		   // BufInit start time = 0.5sec
-	{0x8607, 0x00, 1},		   // Disable mute
-	{0x8620, 0x00, 1},		// [5] = 0: LPCM/NLPCMinformation extraction from Cbit
-	{0x8640, 0x01, 1},		   // CTS adjustment=ON
-	{0x8641, 0x65, 1},		// Adjustment level 1=1000ppm, Adjustment level 2=2000ppm
-	{0x8642, 0x07, 1},		   // Adjustment level 3=4000ppm
-	{0x8652, 0x02, 1},		// Data Output Format: [6:4] = 0, 16-bit, [1:0] = 2, I2S Format
-	{0x8665, 0x10, 1},		// [7:4] 128 Fs Clock divider  Delay 1 * 0.1 s, [0] = 0: 44.1/48 KHz Auto switch setting
+      // RGB888 to YUV422 conversion (must)
+   {0x8574, r8574, 1},
+   {0x8573, r8573, 1},        // OUT YUV444[7]
+      // 1010 0001
+   {0x8576, r8576, 1},        // [7:5] = YCbCr601 Limited ? 3'b011 : 3'b101 (YCbCr 709 Limited)
 
-	{0x8709, 0xFF, 1},		// ""FF"": Updated secondary Pkts even if there are errors received
-	{0x870B, 0x2C, 1},		// [7:4]: ACP packet Intervals before interrupt, [3:0] AVI packet Intervals, [] * 80 ms
-	{0x870C, 0x53, 1},		// [6:0]: PKT receive interrupt is detected,storage register automatic clear, video signal with RGB and no repeat are set
-	{0x870D, 0x01, 1},		// InFo Pkt: [7]: Correctable Error is included, [6:0] # of Errors before assert interrupt
-	{0x870E, 0x30, 1},		// [7:4]: VS packet Intervals before interrupt, [3:0] SPD packet Intervals, [] * 80 ms
-	{0x9007, 0x10, 1},		// [5:0]  Auto clear by not receiving 16V GBD
-	{0x854A, 0x01, 1},		// HDMIRx Initialization Completed, THIS MUST BE SET AT THE LAST!
+   {0x8600, 0x00, 1},      // Forced Mute Off, Set Auto Mute On
+   {0x8602, 0xF3, 1},      // AUTO Mute (AB_sel, PCM/NLPCM_chg, FS_chg, PX_chg, PX_off, DVI)
+   {0x8603, 0x02, 1},         // AUTO Mute (AVMUTE)
+   {0x8604, 0x0C, 1},      // AUTO Play (mute-->BufInit-->play)
+   {0x8606, 0x05, 1},         // BufInit start time = 0.5sec
+   {0x8607, 0x00, 1},         // Disable mute
+   {0x8620, 0x00, 1},      // [5] = 0: LPCM/NLPCMinformation extraction from Cbit
+   {0x8640, 0x01, 1},         // CTS adjustment=ON
+   {0x8641, 0x65, 1},      // Adjustment level 1=1000ppm, Adjustment level 2=2000ppm
+   {0x8642, 0x07, 1},         // Adjustment level 3=4000ppm
+   {0x8652, 0x02, 1},      // Data Output Format: [6:4] = 0, 16-bit, [1:0] = 2, I2S Format
+   {0x8665, 0x10, 1},      // [7:4] 128 Fs Clock divider  Delay 1 * 0.1 s, [0] = 0: 44.1/48 KHz Auto switch setting
 
-	{0x0004, r0004 | 0x03, 2},        // Enable tx buffers
+   {0x8709, 0xFF, 1},      // ""FF"": Updated secondary Pkts even if there are errors received
+   {0x870B, 0x2C, 1},      // [7:4]: ACP packet Intervals before interrupt, [3:0] AVI packet Intervals, [] * 80 ms
+   {0x870C, 0x53, 1},      // [6:0]: PKT receive interrupt is detected,storage register automatic clear, video signal with RGB and no repeat are set
+   {0x870D, 0x01, 1},      // InFo Pkt: [7]: Correctable Error is included, [6:0] # of Errors before assert interrupt
+   {0x870E, 0x30, 1},      // [7:4]: VS packet Intervals before interrupt, [3:0] SPD packet Intervals, [] * 80 ms
+   {0x9007, 0x10, 1},      // [5:0]  Auto clear by not receiving 16V GBD
+   {0x854A, 0x01, 1},      // HDMIRx Initialization Completed, THIS MUST BE SET AT THE LAST!
+
+   {0x0004, r0004 | 0x03, 2},        // Enable tx buffers
 };
 #define NUM_REGS_CMD2 (sizeof(cmds2)/sizeof(cmds2[0]))
 
@@ -383,7 +383,7 @@ struct cmds_t stop_cmds[] =
 {0x8544, 0x01, 1},   // regain manual control
 {0x8544, 0x00, 1},   // disable HPD
 //{0x0014, 0x8000, 0x12}, //power island enable (or'ed with register)
-//{0x0000, 10, 0xFFFF},	//Sleep 10ms
+//{0x0000, 10, 0xFFFF}, //Sleep 10ms
 //{0x0002, 0x0001, 2}, // put to sleep
 };
 #define NUM_REGS_STOP (sizeof(stop_cmds)/sizeof(stop_cmds[0]))
@@ -398,9 +398,9 @@ void start_camera_streaming(void)
    pinModeAlt(1, INPUT);
    //Toggle these pin modes to ensure they get changed.
    pinModeAlt(28, INPUT);
-   pinModeAlt(28, 4);	//Alt0
+   pinModeAlt(28, 4);   //Alt0
    pinModeAlt(29, INPUT);
-   pinModeAlt(29, 4);	//Alt0
+   pinModeAlt(29, 4);   //Alt0
    digitalWrite(41, 1); //Shutdown pin on B+ and Pi2
    digitalWrite(32, 1); //LED pin on B+ and Pi2
 #endif
@@ -417,30 +417,30 @@ void start_camera_streaming(void)
    }
    for (i=0; i<NUM_REGS_CMD; i++)
    {
-	   switch(cmds[i].num_bytes)
-	   {
-			case 1:
-				i2c_wr8(fd, cmds[i].addr, (uint8_t)cmds[i].value);
-				break;
-			case 2:
-				i2c_wr16(fd, cmds[i].addr, (uint16_t)cmds[i].value);
-				break;
-			case 4:
-				i2c_wr32(fd, cmds[i].addr, cmds[i].value);
-				break;
-			case 0x11:
-				i2c_wr8_and_or(fd, cmds[i].addr, 0xFF, (uint8_t)cmds[i].value);
-				break;
-			case 0x12:
-				i2c_wr16_and_or(fd, cmds[i].addr, 0xFFFF, (uint16_t)cmds[i].value);
-				break;
-			case 0xFFFF:
-				vcos_sleep(cmds[i].value);
-				break;
-			default:
-				vcos_log_error("%u bytes specified in entry %d - not supported", cmds[i].num_bytes, i);
-				break;
-		}
+      switch(cmds[i].num_bytes)
+      {
+         case 1:
+            i2c_wr8(fd, cmds[i].addr, (uint8_t)cmds[i].value);
+            break;
+         case 2:
+            i2c_wr16(fd, cmds[i].addr, (uint16_t)cmds[i].value);
+            break;
+         case 4:
+            i2c_wr32(fd, cmds[i].addr, cmds[i].value);
+            break;
+         case 0x11:
+            i2c_wr8_and_or(fd, cmds[i].addr, 0xFF, (uint8_t)cmds[i].value);
+            break;
+         case 0x12:
+            i2c_wr16_and_or(fd, cmds[i].addr, 0xFFFF, (uint16_t)cmds[i].value);
+            break;
+         case 0xFFFF:
+            vcos_sleep(cmds[i].value);
+            break;
+         default:
+            vcos_log_error("%u bytes specified in entry %d - not supported", cmds[i].num_bytes, i);
+            break;
+      }
    }
       // default is 256 bytes, 256 / 16
    // write in groups of 16
@@ -468,30 +468,30 @@ void start_camera_streaming(void)
    }
    for (i=0; i<NUM_REGS_CMD2; i++)
    {
-	   switch(cmds2[i].num_bytes)
-	   {
-			case 1:
-				i2c_wr8(fd, cmds2[i].addr, (uint8_t)cmds2[i].value);
-				break;
-			case 2:
-				i2c_wr16(fd, cmds2[i].addr, (uint16_t)cmds2[i].value);
-				break;
-			case 4:
-				i2c_wr32(fd, cmds2[i].addr, cmds2[i].value);
-				break;
-			case 0x11:
-				i2c_wr8_and_or(fd, cmds2[i].addr, 0xFF, (uint8_t)cmds2[i].value);
-				break;
-			case 0x12:
-				i2c_wr16_and_or(fd, cmds2[i].addr, 0xFFFF, (uint16_t)cmds2[i].value);
-				break;
-			case 0xFFFF:
-				vcos_sleep(cmds2[i].value);
-				break;
-			default:
-				vcos_log_error("%u bytes specified in entry %d - not supported", cmds2[i].num_bytes, i);
-				break;
-		}
+      switch(cmds2[i].num_bytes)
+      {
+         case 1:
+            i2c_wr8(fd, cmds2[i].addr, (uint8_t)cmds2[i].value);
+            break;
+         case 2:
+            i2c_wr16(fd, cmds2[i].addr, (uint16_t)cmds2[i].value);
+            break;
+         case 4:
+            i2c_wr32(fd, cmds2[i].addr, cmds2[i].value);
+            break;
+         case 0x11:
+            i2c_wr8_and_or(fd, cmds2[i].addr, 0xFF, (uint8_t)cmds2[i].value);
+            break;
+         case 0x12:
+            i2c_wr16_and_or(fd, cmds2[i].addr, 0xFFFF, (uint16_t)cmds2[i].value);
+            break;
+         case 0xFFFF:
+            vcos_sleep(cmds2[i].value);
+            break;
+         default:
+            vcos_log_error("%u bytes specified in entry %d - not supported", cmds2[i].num_bytes, i);
+            break;
+      }
    }
 
    close(fd);
@@ -513,30 +513,30 @@ void stop_camera_streaming(void)
    }
    for (i=0; i<NUM_REGS_STOP; i++)
    {
-	   switch(stop_cmds[i].num_bytes)
-	   {
-			case 1:
-				i2c_wr8(fd, stop_cmds[i].addr, (uint8_t)stop_cmds[i].value);
-				break;
-			case 2:
-				i2c_wr16(fd, stop_cmds[i].addr, (uint16_t)stop_cmds[i].value);
-				break;
-			case 4:
-				i2c_wr32(fd, stop_cmds[i].addr, stop_cmds[i].value);
-				break;
-			case 0x11:
-				i2c_wr8_and_or(fd, stop_cmds[i].addr, 0xFF, (uint8_t)stop_cmds[i].value);
-				break;
-			case 0x12:
-				i2c_wr16_and_or(fd, stop_cmds[i].addr, 0xFFFF, (uint16_t)stop_cmds[i].value);
-				break;
-			case 0xFFFF:
-				vcos_sleep(stop_cmds[i].value);
-				break;
-			default:
-				vcos_log_error("%u bytes specified in entry %d - not supported", stop_cmds[i].num_bytes, i);
-				break;
-		}
+      switch(stop_cmds[i].num_bytes)
+      {
+         case 1:
+            i2c_wr8(fd, stop_cmds[i].addr, (uint8_t)stop_cmds[i].value);
+            break;
+         case 2:
+            i2c_wr16(fd, stop_cmds[i].addr, (uint16_t)stop_cmds[i].value);
+            break;
+         case 4:
+            i2c_wr32(fd, stop_cmds[i].addr, stop_cmds[i].value);
+            break;
+         case 0x11:
+            i2c_wr8_and_or(fd, stop_cmds[i].addr, 0xFF, (uint8_t)stop_cmds[i].value);
+            break;
+         case 0x12:
+            i2c_wr16_and_or(fd, stop_cmds[i].addr, 0xFFFF, (uint16_t)stop_cmds[i].value);
+            break;
+         case 0xFFFF:
+            vcos_sleep(stop_cmds[i].value);
+            break;
+         default:
+            vcos_log_error("%u bytes specified in entry %d - not supported", stop_cmds[i].num_bytes, i);
+            break;
+      }
    }
    close(fd);
 #ifdef DO_PIN_CONFIG
@@ -549,30 +549,30 @@ int running = 0;
 #ifdef MANUAL_CONNECTION
 static void callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
 {
-	static int count = 0;
-	vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
-	if(running)
-	{
-		if(!(buffer->flags&MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO) &&
+   static int count = 0;
+   vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
+   if(running)
+   {
+      if(!(buffer->flags&MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO) &&
                    (((count++)%15)==0))
-		{
-			// Save every 15th frame
-			// SD card access is to slow to do much more.
-			FILE *file;
-			char filename[20];
-			sprintf(filename, "raw%04d.raw", count);
-			file = fopen(filename, "wb");
-			if(file)
-			{
-				fwrite(buffer->data, buffer->length, 1, file);
-				fclose(file);
-			}
-		}
-		buffer->length = 0;
-		mmal_port_send_buffer(port, buffer);
-	}
-	else
-		mmal_buffer_header_release(buffer);
+      {
+         // Save every 15th frame
+         // SD card access is to slow to do much more.
+         FILE *file;
+         char filename[20];
+         sprintf(filename, "raw%04d.raw", count);
+         file = fopen(filename, "wb");
+         if(file)
+         {
+            fwrite(buffer->data, buffer->length, 1, file);
+            fclose(file);
+         }
+      }
+      buffer->length = 0;
+      mmal_port_send_buffer(port, buffer);
+   }
+   else
+      mmal_buffer_header_release(buffer);
 }
 #endif
 
@@ -586,31 +586,30 @@ static void callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
  */
 static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
 {
-	MMAL_STATUS_T status;
-	vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
-	//cos_log_error("File handle: %s", port->userdata);
-	int bytes_written = buffer->length;
-	
-	if (running)
-	{
+   MMAL_STATUS_T status;
+   vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
+   //vcos_log_error("File handle: %s", port->userdata);
+   int bytes_written = buffer->length;
 
-		bytes_written = fwrite(buffer->data, 1, buffer->length, port->userdata);
-		fflush(port->userdata);
+   if (running)
+   {
+      bytes_written = fwrite(buffer->data, 1, buffer->length, port->userdata);
+      fflush(port->userdata);
 
-		mmal_buffer_header_mem_unlock(buffer);
+      mmal_buffer_header_mem_unlock(buffer);
 
-		if (bytes_written != buffer->length)
-		{
-			vcos_log_error("Failed to write buffer data (%d from %d)- aborting", bytes_written, buffer->length);
-		}
-		
-		mmal_buffer_header_release(buffer);
-		status = mmal_port_send_buffer(port, buffer);
-		if(status != MMAL_SUCCESS)
-		{
-			vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
-		}
-	}
+      if (bytes_written != buffer->length)
+      {
+         vcos_log_error("Failed to write buffer data (%d from %d)- aborting", bytes_written, buffer->length);
+      }
+
+      mmal_buffer_header_release(buffer);
+      status = mmal_port_send_buffer(port, buffer);
+      if(status != MMAL_SUCCESS)
+      {
+         vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
+      }
+   }
 }
 
 
@@ -677,205 +676,203 @@ static FILE *open_filename(char *filename[])
 
 int main (void)
 {
-	MMAL_COMPONENT_T *rawcam, *render, *isp, *splitter, *encoder;
-	MMAL_STATUS_T status;
-	MMAL_PORT_T *output, *input, *isp_input, *isp_output, *encoder_input, *encoder_output;
-	MMAL_POOL_T *pool;
-	MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
-	MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
-	FILE *file_handle = NULL;
+   MMAL_COMPONENT_T *rawcam, *render, *isp, *splitter, *encoder;
+   MMAL_STATUS_T status;
+   MMAL_PORT_T *output, *input, *isp_input, *isp_output, *encoder_input, *encoder_output;
+   MMAL_POOL_T *pool;
+   MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
+   MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
+   FILE *file_handle = NULL;
 
-	bcm_host_init();
-	vcos_log_register("RaspiRaw", VCOS_LOG_CATEGORY);
+   bcm_host_init();
+   vcos_log_register("RaspiRaw", VCOS_LOG_CATEGORY);
 
-	status = mmal_component_create("vc.ril.rawcam", &rawcam);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to create rawcam");
-		return -1;
-	}
-	status = mmal_component_create("vc.ril.video_render", &render);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to create render");
-		return -1;
-	}
-	
-	status = mmal_component_create("vc.ril.isp", &isp);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to create isp");
-		return -1;
-	}
-	
-	status = mmal_component_create("vc.ril.video_splitter", &splitter);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to create isp");
-		return -1;
-	}
-	
-	status = mmal_component_create("vc.ril.video_encode", &encoder);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to create encoder");
-		return -1;
-	}
-	
-	output = rawcam->output[0];
-	isp_input = isp->input[0];
-	isp_output = isp->output[0];
-	encoder_input = encoder->input[0];
-	encoder_output = encoder->output[0];
-	input = render->input[0];
+   status = mmal_component_create("vc.ril.rawcam", &rawcam);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to create rawcam");
+      return -1;
+   }
+   status = mmal_component_create("vc.ril.video_render", &render);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to create render");
+      return -1;
+   }
 
+   status = mmal_component_create("vc.ril.isp", &isp);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to create isp");
+      return -1;
+   }
 
-// setup CSI configs on rawcam
-	status = mmal_port_parameter_get(output, &rx_cfg.hdr);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to get cfg");
-		goto component_destroy;
-	}
-	rx_cfg.image_id = CSI_IMAGE_ID;
-	rx_cfg.data_lanes = CSI_DATA_LANES;
-	rx_cfg.unpack = UNPACK;
-	rx_cfg.pack = PACK;
-	rx_cfg.data_lanes = 2;
-	rx_cfg.embedded_data_lines = 128;
-	vcos_log_error("Set pack to %d, unpack to %d", rx_cfg.unpack, rx_cfg.pack);
-	status = mmal_port_parameter_set(output, &rx_cfg.hdr);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set cfg");
-		goto component_destroy;
-	}
+   status = mmal_component_create("vc.ril.video_splitter", &splitter);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to create isp");
+      return -1;
+   }
 
+   status = mmal_component_create("vc.ril.video_encode", &encoder);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to create encoder");
+      return -1;
+   }
 
-	vcos_log_error("Enable rawcam....");
+   output = rawcam->output[0];
+   isp_input = isp->input[0];
+   isp_output = isp->output[0];
+   encoder_input = encoder->input[0];
+   encoder_output = encoder->output[0];
+   input = render->input[0];
 
-	status = mmal_component_enable(rawcam);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to enable");
-		goto component_destroy;
-	}
-	status = mmal_port_parameter_set_boolean(output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set zero copy");
-		goto component_disable;
-	}
+   // setup CSI configs on rawcam
+   status = mmal_port_parameter_get(output, &rx_cfg.hdr);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to get cfg");
+      goto component_destroy;
+   }
+   rx_cfg.image_id = CSI_IMAGE_ID;
+   rx_cfg.data_lanes = CSI_DATA_LANES;
+   rx_cfg.unpack = UNPACK;
+   rx_cfg.pack = PACK;
+   rx_cfg.data_lanes = 2;
+   rx_cfg.embedded_data_lines = 128;
+   vcos_log_error("Set pack to %d, unpack to %d", rx_cfg.unpack, rx_cfg.pack);
+   status = mmal_port_parameter_set(output, &rx_cfg.hdr);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to set cfg");
+      goto component_destroy;
+   }
 
-// end setup rawcam
+   vcos_log_error("Enable rawcam....");
 
-	vcos_log_error("Enable isp....");
+   status = mmal_component_enable(rawcam);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to enable");
+      goto component_destroy;
+   }
+   status = mmal_port_parameter_set_boolean(output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to set zero copy");
+      goto component_disable;
+   }
 
-	status = mmal_component_enable(isp);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to enable");
-		goto component_destroy;
-	}
-	status = mmal_port_parameter_set_boolean(isp_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set zero copy");
-		goto component_disable;
-	}
+   // end setup rawcam
 
-	vcos_log_error("Enable splitter....");
+   vcos_log_error("Enable isp....");
 
-	status = mmal_component_enable(splitter);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to enable");
-		goto component_destroy;
-	}
-	status = mmal_port_parameter_set_boolean(splitter->output[0], MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set zero copy");
-		goto component_disable;
-	}
+   status = mmal_component_enable(isp);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to enable");
+      goto component_destroy;
+   }
+   status = mmal_port_parameter_set_boolean(isp_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to set zero copy");
+      goto component_disable;
+   }
 
- 	splitter->output[0]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
- 	splitter->output[0]->buffer_num = 8; //isp_output->buffer_num_recommended;
-     vcos_log_error("buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
-	status = mmal_port_format_commit(splitter->output[0]);
+   vcos_log_error("Enable splitter....");
 
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed port_format_commit on splitter->output[0]");
-		goto component_disable;
-	}
+   status = mmal_component_enable(splitter);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to enable");
+      goto component_destroy;
+   }
+   status = mmal_port_parameter_set_boolean(splitter->output[0], MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to set zero copy");
+      goto component_disable;
+   }
 
- 	splitter->output[1]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
- 	splitter->output[1]->buffer_num = 8; //isp_output->buffer_num_recommended;
-     vcos_log_error("buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
-	status = mmal_port_format_commit(splitter->output[1]);
+   splitter->output[0]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
+   splitter->output[0]->buffer_num = 8; //isp_output->buffer_num_recommended;
+   vcos_log_error("buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
+   status = mmal_port_format_commit(splitter->output[0]);
 
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed port_format_commit on splitter->output[1]");
-		goto component_disable;
-	}
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed port_format_commit on splitter->output[0]");
+      goto component_disable;
+   }
+
+   splitter->output[1]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
+   splitter->output[1]->buffer_num = 8; //isp_output->buffer_num_recommended;
+   vcos_log_error("buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
+   status = mmal_port_format_commit(splitter->output[1]);
+
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed port_format_commit on splitter->output[1]");
+      goto component_disable;
+   }
 
 
-	output->format->es->video.crop.width = WIDTH;
-	output->format->es->video.crop.height = HEIGHT;
-	output->format->es->video.width = VCOS_ALIGN_UP(WIDTH, 32);
-	output->format->es->video.height = VCOS_ALIGN_UP(HEIGHT, 16);
-	output->format->encoding = ENCODING;
-	status = mmal_port_format_commit(output);
+   output->format->es->video.crop.width = WIDTH;
+   output->format->es->video.crop.height = HEIGHT;
+   output->format->es->video.width = VCOS_ALIGN_UP(WIDTH, 32);
+   output->format->es->video.height = VCOS_ALIGN_UP(HEIGHT, 16);
+   output->format->encoding = ENCODING;
+   status = mmal_port_format_commit(output);
 
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed port_format_commit");
-		goto component_disable;
-	}
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed port_format_commit");
+      goto component_disable;
+   }
 
- 	output->buffer_size = output->buffer_size_recommended;
- 	output->buffer_num = 8; //output->buffer_num_recommended;
-     vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
-	status = mmal_port_format_commit(output);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed port_format_commit");
-		goto component_disable;
-	}
-	// copy the format of the rawcam output to the resizer input
-	mmal_format_copy(isp_input->format, output->format);
-	isp_input->buffer_num = 8;
-	vcos_log_error("Setting isp input port format to the same as the rawcam output");
-	status = mmal_port_format_commit(isp_input);
-	if (status != MMAL_SUCCESS)
-	{
-		printf("Couldn't set isp input port format : error %d", status);
-	}
-	
-	// copy the isp input to the isp output
-	mmal_format_copy(isp_output->format, isp_input->format);
-	isp_output->format->encoding = MMAL_ENCODING_I420;
-	isp_output->format->es->video.width = WIDTH;
-	isp_output->format->es->video.height = HEIGHT;
-	isp_output->format->es->video.crop.x = 0;
-	isp_output->format->es->video.crop.y = 0;
-	isp_output->format->es->video.crop.width = WIDTH;
-	isp_output->format->es->video.crop.height = HEIGHT;
- 	isp_output->buffer_size = 2764800; //isp_output->buffer_size_recommended;
- 	isp_output->buffer_num = 8; //isp_output->buffer_num_recommended;
-     vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
-	vcos_log_error("Setting isp output port format");
-	status = mmal_port_format_commit(isp_output);
-	if (status != MMAL_SUCCESS)
-	{
-		printf("Couldn't set resizer output port format : error %d", status);
-	}
+   output->buffer_size = output->buffer_size_recommended;
+   output->buffer_num = 8; //output->buffer_num_recommended;
+   vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
+   status = mmal_port_format_commit(output);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed port_format_commit");
+      goto component_disable;
+   }
+   // copy the format of the rawcam output to the resizer input
+   mmal_format_copy(isp_input->format, output->format);
+   isp_input->buffer_num = 8;
+   vcos_log_error("Setting isp input port format to the same as the rawcam output");
+   status = mmal_port_format_commit(isp_input);
+   if (status != MMAL_SUCCESS)
+   {
+      printf("Couldn't set isp input port format : error %d", status);
+   }
 
-//////////////////////////  Encoder setup
+   // copy the isp input to the isp output
+   mmal_format_copy(isp_output->format, isp_input->format);
+   isp_output->format->encoding = MMAL_ENCODING_I420;
+   isp_output->format->es->video.width = WIDTH;
+   isp_output->format->es->video.height = HEIGHT;
+   isp_output->format->es->video.crop.x = 0;
+   isp_output->format->es->video.crop.y = 0;
+   isp_output->format->es->video.crop.width = WIDTH;
+   isp_output->format->es->video.crop.height = HEIGHT;
+   isp_output->buffer_size = 2764800; //isp_output->buffer_size_recommended;
+   isp_output->buffer_num = 8; //isp_output->buffer_num_recommended;
+   vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
+   vcos_log_error("Setting isp output port format");
+   status = mmal_port_format_commit(isp_output);
+   if (status != MMAL_SUCCESS)
+   {
+      printf("Couldn't set resizer output port format : error %d", status);
+   }
 
-	vcos_log_error("Setting encoder input port format to the same as the isp output");
+   //  Encoder setup
+
+   vcos_log_error("Setting encoder input port format to the same as the isp output");
    mmal_format_copy(encoder_input->format, isp_output->format);
    // Commit the port changes to the output port
    status = mmal_port_format_commit(encoder_input);
@@ -885,8 +882,8 @@ int main (void)
       vcos_log_error("Unable to set format on encoder input port");
    }
 
-	vcos_log_error("Setting encoder output port format to the same as the encoder input");
-// We want same format on input and output
+   vcos_log_error("Setting encoder output port format to the same as the encoder input");
+   // We want same format on input and output
    mmal_format_copy(encoder_output->format, encoder_input->format);
 
    // Only supporting H264 at the moment
@@ -916,6 +913,7 @@ int main (void)
       vcos_log_error("Unable to set format on encoder output port");
    }
 
+   {
       MMAL_PARAMETER_VIDEO_PROFILE_T  param;
       param.hdr.id = MMAL_PARAMETER_PROFILE;
       param.hdr.size = sizeof(param);
@@ -928,6 +926,7 @@ int main (void)
       {
          vcos_log_error("Unable to set H264 profile");
       }
+   }
 
    if (mmal_port_parameter_set_boolean(encoder_input, MMAL_PARAMETER_VIDEO_IMMUTABLE_INPUT, 1) != MMAL_SUCCESS)
    {
@@ -949,246 +948,213 @@ int main (void)
       // Continue rather than abort..
    }
 
-	encoder_input->format->encoding = MMAL_ENCODING_RGB24;
+   encoder_input->format->encoding = MMAL_ENCODING_RGB24;
    // Commit the port changes to the input port
    status = mmal_port_format_commit(encoder_input);
 
    if (status != MMAL_SUCCESS)
    {
       vcos_log_error("Unable to set format on video encoder input port");
-   }	
+   }
 
-	vcos_log_error("Enable encoder....");
+   vcos_log_error("Enable encoder....");
 
-	status = mmal_component_enable(encoder);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to enable");
-		goto component_destroy;
-	}
-	status = mmal_port_parameter_set_boolean(encoder_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set zero copy");
-		goto component_disable;
-	}
-	
+   status = mmal_component_enable(encoder);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to enable");
+      goto component_destroy;
+   }
+   status = mmal_port_parameter_set_boolean(encoder_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to set zero copy");
+      goto component_disable;
+   }
 
-
-   
-   
-//////////////////////////   Encoder setup	
-	
 /*
-	vcos_log_error("rawcam supported encodings:");
-	display_supported_encodings(output);
-	vcos_log_error("isp input supported encodings:");
-	display_supported_encodings(isp_input);
-	vcos_log_error("isp output supported encodings:");
-	display_supported_encodings(isp_output);
-	vcos_log_error("encoder input supported encodings:");
-	display_supported_encodings(encoder_input);
-	vcos_log_error("encoder output supported encodings:");
-	display_supported_encodings(encoder_output);
-	vcos_log_error("render supported encodings:");
-	display_supported_encodings(input);
+   vcos_log_error("rawcam supported encodings:");
+   display_supported_encodings(output);
+   vcos_log_error("isp input supported encodings:");
+   display_supported_encodings(isp_input);
+   vcos_log_error("isp output supported encodings:");
+   display_supported_encodings(isp_output);
+   vcos_log_error("encoder input supported encodings:");
+   display_supported_encodings(encoder_input);
+   vcos_log_error("encoder output supported encodings:");
+   display_supported_encodings(encoder_output);
+   vcos_log_error("render supported encodings:");
+   display_supported_encodings(input);
 */
-	
 
    MMAL_CONNECTION_T *connection[4] = {0};
 
-	status = mmal_port_parameter_set_boolean(input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to set zero copy on video_render");
-		goto component_disable;
-	}
+   status = mmal_port_parameter_set_boolean(input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to set zero copy on video_render");
+      goto component_disable;
+   }
 
-
-
-	vcos_log_error("Create connections....");
-	vcos_log_error("Create connection rawcam output to isp input....");
-	status =  mmal_connection_create(&connection[0], output, isp_input, MMAL_CONNECTION_FLAG_TUNNELLING);
-	vcos_log_error("Create connection isp output to splitter input....");
-	status =  mmal_connection_create(&connection[1], isp_output, splitter->input[0], MMAL_CONNECTION_FLAG_TUNNELLING);
-	vcos_log_error("Create connection splitter output to render input....");
-	status =  mmal_connection_create(&connection[2], splitter->output[0], input, MMAL_CONNECTION_FLAG_TUNNELLING);
-	vcos_log_error("Create connection splitter output2 to encoder input....");
-	status =  mmal_connection_create(&connection[3], splitter->output[1], encoder_input, MMAL_CONNECTION_FLAG_TUNNELLING);
-
+   vcos_log_error("Create connections....");
+   vcos_log_error("Create connection rawcam output to isp input....");
+   status =  mmal_connection_create(&connection[0], output, isp_input, MMAL_CONNECTION_FLAG_TUNNELLING);
+   vcos_log_error("Create connection isp output to splitter input....");
+   status =  mmal_connection_create(&connection[1], isp_output, splitter->input[0], MMAL_CONNECTION_FLAG_TUNNELLING);
+   vcos_log_error("Create connection splitter output to render input....");
+   status =  mmal_connection_create(&connection[2], splitter->output[0], input, MMAL_CONNECTION_FLAG_TUNNELLING);
+   vcos_log_error("Create connection splitter output2 to encoder input....");
+   status =  mmal_connection_create(&connection[3], splitter->output[1], encoder_input, MMAL_CONNECTION_FLAG_TUNNELLING);
 
    if (status == MMAL_SUCCESS)
    {
-	vcos_log_error("Enable connection[0]...");
-    vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
+      vcos_log_error("Enable connection[0]...");
+      vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
       status =  mmal_connection_enable(connection[0]);
       if (status != MMAL_SUCCESS)
       {
          mmal_connection_destroy(connection[0]);
-		}
-	vcos_log_error("Enable connection[1]...");
-    vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
-     status =  mmal_connection_enable(connection[1]);
+      }
+      vcos_log_error("Enable connection[1]...");
+      vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
+      status =  mmal_connection_enable(connection[1]);
       if (status != MMAL_SUCCESS)
       {
          mmal_connection_destroy(connection[1]);
-	  }
-	  
-	vcos_log_error("Enable connection[2]...");
-    vcos_log_error("buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
-     status =  mmal_connection_enable(connection[2]);
+      }
+
+      vcos_log_error("Enable connection[2]...");
+      vcos_log_error("buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
+      status =  mmal_connection_enable(connection[2]);
       if (status != MMAL_SUCCESS)
       {
          mmal_connection_destroy(connection[2]);
-	  }
+      }
 
-	vcos_log_error("Enable connection[3]...");
-    vcos_log_error("buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
-     status =  mmal_connection_enable(connection[3]);
+      vcos_log_error("Enable connection[3]...");
+      vcos_log_error("buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
+      status =  mmal_connection_enable(connection[3]);
       if (status != MMAL_SUCCESS)
       {
          mmal_connection_destroy(connection[3]);
-	  }
-	}
+      }
+   }
 
+   // open h264 file and put the file handle in userdata for the encoder output port
 
+   encoder_output->userdata = open_filename("test_encode.h264");
 
-	// open h264 file and put the file handle in userdata for the encoder output port
-	
-	encoder_output->userdata = open_filename("test_encode.h264");
+   //Create encoder output buffers
 
-//////
+   vcos_log_error("Create pool of %d buffers of size %d", encoder_output->buffer_num, encoder_output->buffer_size);
+   pool = mmal_port_pool_create(encoder_output, encoder_output->buffer_num, encoder_output->buffer_size);
+   if(!pool)
+   {
+      vcos_log_error("Failed to create pool");
+      goto component_disable;
+   }
 
-	vcos_log_error("Create pool of %d buffers of size %d", encoder_output->buffer_num, encoder_output->buffer_size);
-	pool = mmal_port_pool_create(encoder_output, encoder_output->buffer_num, encoder_output->buffer_size);
-	if(!pool)
-	{
-		vcos_log_error("Failed to create pool");
-		goto component_disable;
-	}
+   status = mmal_port_enable(encoder_output, encoder_buffer_callback);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to enable port");
+   }
 
-	status = mmal_port_enable(encoder_output, encoder_buffer_callback);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to enable port");
-	}
-	
-	running = 1;
-	int i;
-	for(i=0; i<encoder_output->buffer_num; i++)
-	{
-		MMAL_BUFFER_HEADER_T *buffer = mmal_queue_get(pool->queue);
+   running = 1;
+   int i;
+   for(i=0; i<encoder_output->buffer_num; i++)
+   {
+      MMAL_BUFFER_HEADER_T *buffer = mmal_queue_get(pool->queue);
 
-		if (!buffer)
-		{
-			vcos_log_error("Where'd my buffer go?!");
-			goto port_disable;
-		}
-		status = mmal_port_send_buffer(encoder_output, buffer);
-		if(status != MMAL_SUCCESS)
-		{
-			vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
-			goto port_disable;
-		}
-		vcos_log_error("Sent buffer %p", buffer);
-	}
+      if (!buffer)
+      {
+         vcos_log_error("Where'd my buffer go?!");
+         goto port_disable;
+      }
+      status = mmal_port_send_buffer(encoder_output, buffer);
+      if(status != MMAL_SUCCESS)
+      {
+         vcos_log_error("mmal_port_send_buffer failed on buffer %p, status %d", buffer, status);
+         goto port_disable;
+      }
+      vcos_log_error("Sent buffer %p", buffer);
+   }
 
+   // Setup complete
 
+   vcos_log_error("All done. Start streaming...");
+   //start_camera_streaming();
+   vcos_log_error("View!");
 
+   vcos_sleep(20000);
+   running = 0;
 
-
-
-
-
-/////////
-
-
-
-
-
-
-
-	vcos_log_error("All done. Start streaming...");
-	//start_camera_streaming();
-	vcos_log_error("View!");
-
-	vcos_sleep(20000);
-	running = 0;
-
-	vcos_log_error("Stopping streaming...");
-	//stop_camera_streaming();
+   vcos_log_error("Stopping streaming...");
+   //stop_camera_streaming();
 
 port_disable:
 
-	mmal_connection_disable(connection[0]);
-	mmal_connection_destroy(connection[0]);
+   mmal_connection_disable(connection[0]);
+   mmal_connection_destroy(connection[0]);
 
-	mmal_connection_disable(connection[1]);
-	mmal_connection_destroy(connection[1]);
+   mmal_connection_disable(connection[1]);
+   mmal_connection_destroy(connection[1]);
 
-	mmal_connection_disable(connection[2]);
-	mmal_connection_destroy(connection[2]);
+   mmal_connection_disable(connection[2]);
+   mmal_connection_destroy(connection[2]);
 
-	mmal_connection_disable(connection[3]);
-	mmal_connection_destroy(connection[3]);
+   mmal_connection_disable(connection[3]);
+   mmal_connection_destroy(connection[3]);
 
 component_disable:
-	status = mmal_component_disable(rawcam);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to disable rawcam");
-	}
-	status = mmal_component_disable(isp);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to disable isp");
-	}
-	status = mmal_component_disable(render);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to disable render");
-	}
-	
-	status = mmal_component_disable(splitter);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to disable splitter");
-	}
-	
-	status = mmal_component_disable(encoder);
-	if(status != MMAL_SUCCESS)
-	{
-		vcos_log_error("Failed to disable encoder");
-	}	
-	
+   status = mmal_component_disable(rawcam);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to disable rawcam");
+   }
+
+   status = mmal_component_disable(isp);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to disable isp");
+   }
+
+   status = mmal_component_disable(render);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to disable render");
+   }
+
+   status = mmal_component_disable(splitter);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to disable splitter");
+   }
+
+   status = mmal_component_disable(encoder);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to disable encoder");
+   }
+
 component_destroy:
-	mmal_component_destroy(rawcam);
-	mmal_component_destroy(isp);
-	mmal_component_destroy(render);
-	mmal_component_destroy(splitter);
-	mmal_component_destroy(encoder);
-	
-	return 0;
+   mmal_component_destroy(rawcam);
+   mmal_component_destroy(isp);
+   mmal_component_destroy(render);
+   mmal_component_destroy(splitter);
+   mmal_component_destroy(encoder);
+   
+   return 0;
 }
 
-
-
-
-
-
-
-	#define MAX_ENCODINGS_NUM 20
-	typedef struct {
-		MMAL_PARAMETER_HEADER_T header;
-		MMAL_FOURCC_T encodings[MAX_ENCODINGS_NUM];
-	} MMAL_SUPPORTED_ENCODINGS_T;
+#define MAX_ENCODINGS_NUM 20
+typedef struct {
+   MMAL_PARAMETER_HEADER_T header;
+   MMAL_FOURCC_T encodings[MAX_ENCODINGS_NUM];
+} MMAL_SUPPORTED_ENCODINGS_T;
 
 void display_supported_encodings(MMAL_PORT_T *port)
 {
-	
-
-
-	
    MMAL_SUPPORTED_ENCODINGS_T sup_encodings = {{MMAL_PARAMETER_SUPPORTED_ENCODINGS, sizeof(sup_encodings)}, {0}};
    if (mmal_port_parameter_get(port, &sup_encodings.header) == MMAL_SUCCESS)
    {
@@ -1199,74 +1165,74 @@ void display_supported_encodings(MMAL_PORT_T *port)
       {
          switch (sup_encodings.encodings[i])
          {
-			case MMAL_ENCODING_I420:
-				vcos_log_error("MMAL_ENCODING_I420");
-			break;
-			case MMAL_ENCODING_I420_SLICE:
-				vcos_log_error("MMAL_ENCODING_I420_SLICE");
-			break;
-			case MMAL_ENCODING_YV12:
-				vcos_log_error("MMAL_ENCODING_YV12");
-			break;
-			case MMAL_ENCODING_I422:
-				vcos_log_error("MMAL_ENCODING_I422");
-			break;
-			case MMAL_ENCODING_I422_SLICE:
-				vcos_log_error("MMAL_ENCODING_I422_SLICE");
-			break;
-			case MMAL_ENCODING_YUYV:
-				vcos_log_error("MMAL_ENCODING_YUYV");
-			break;
-			case MMAL_ENCODING_YVYU:
-				vcos_log_error("MMAL_ENCODING_YVYU");
-			break;
-			case MMAL_ENCODING_UYVY:
-				vcos_log_error("MMAL_ENCODING_UYVY");
-			break;
-			case MMAL_ENCODING_VYUY:
-				vcos_log_error("MMAL_ENCODING_VYUY");
-			break;
-			case MMAL_ENCODING_NV12:
-				vcos_log_error("MMAL_ENCODING_NV12");
-			break;
-			case MMAL_ENCODING_NV21:
-				vcos_log_error("MMAL_ENCODING_NV21");
-			break;
-			case MMAL_ENCODING_ARGB:
-				vcos_log_error("MMAL_ENCODING_ARGB");
-			break;
-			case MMAL_ENCODING_RGBA:
-				vcos_log_error("MMAL_ENCODING_RGBA");
-			break;
-			case MMAL_ENCODING_ABGR:
-				vcos_log_error("MMAL_ENCODING_ABGR");
-			break;
-			case MMAL_ENCODING_BGRA:
-				vcos_log_error("MMAL_ENCODING_BGRA");
-			break;
-			case MMAL_ENCODING_RGB16:
-				vcos_log_error("MMAL_ENCODING_RGB16");
-			break;
-			case MMAL_ENCODING_RGB24:
-				vcos_log_error("MMAL_ENCODING_RGB24");
-			break;
-			case MMAL_ENCODING_RGB32:
-				vcos_log_error("MMAL_ENCODING_RGB32");
-			break;
-			case MMAL_ENCODING_BGR16:
-				vcos_log_error("MMAL_ENCODING_BGR16");
-			break;
-			case MMAL_ENCODING_BGR24:
-				vcos_log_error("MMAL_ENCODING_BGR24");
-			break;
-			case MMAL_ENCODING_BGR32:
-				vcos_log_error("MMAL_ENCODING_BGR32");
-			break;
-		 }
+            case MMAL_ENCODING_I420:
+               vcos_log_error("MMAL_ENCODING_I420");
+            break;
+            case MMAL_ENCODING_I420_SLICE:
+               vcos_log_error("MMAL_ENCODING_I420_SLICE");
+            break;
+            case MMAL_ENCODING_YV12:
+               vcos_log_error("MMAL_ENCODING_YV12");
+            break;
+            case MMAL_ENCODING_I422:
+               vcos_log_error("MMAL_ENCODING_I422");
+            break;
+            case MMAL_ENCODING_I422_SLICE:
+               vcos_log_error("MMAL_ENCODING_I422_SLICE");
+            break;
+            case MMAL_ENCODING_YUYV:
+               vcos_log_error("MMAL_ENCODING_YUYV");
+            break;
+            case MMAL_ENCODING_YVYU:
+               vcos_log_error("MMAL_ENCODING_YVYU");
+            break;
+            case MMAL_ENCODING_UYVY:
+               vcos_log_error("MMAL_ENCODING_UYVY");
+            break;
+            case MMAL_ENCODING_VYUY:
+               vcos_log_error("MMAL_ENCODING_VYUY");
+            break;
+            case MMAL_ENCODING_NV12:
+               vcos_log_error("MMAL_ENCODING_NV12");
+            break;
+            case MMAL_ENCODING_NV21:
+               vcos_log_error("MMAL_ENCODING_NV21");
+            break;
+            case MMAL_ENCODING_ARGB:
+               vcos_log_error("MMAL_ENCODING_ARGB");
+            break;
+            case MMAL_ENCODING_RGBA:
+               vcos_log_error("MMAL_ENCODING_RGBA");
+            break;
+            case MMAL_ENCODING_ABGR:
+               vcos_log_error("MMAL_ENCODING_ABGR");
+            break;
+            case MMAL_ENCODING_BGRA:
+               vcos_log_error("MMAL_ENCODING_BGRA");
+            break;
+            case MMAL_ENCODING_RGB16:
+               vcos_log_error("MMAL_ENCODING_RGB16");
+            break;
+            case MMAL_ENCODING_RGB24:
+               vcos_log_error("MMAL_ENCODING_RGB24");
+            break;
+            case MMAL_ENCODING_RGB32:
+               vcos_log_error("MMAL_ENCODING_RGB32");
+            break;
+            case MMAL_ENCODING_BGR16:
+               vcos_log_error("MMAL_ENCODING_BGR16");
+            break;
+            case MMAL_ENCODING_BGR24:
+               vcos_log_error("MMAL_ENCODING_BGR24");
+            break;
+            case MMAL_ENCODING_BGR32:
+               vcos_log_error("MMAL_ENCODING_BGR32");
+            break;
+         }
       }
    }
    else
    {
-	   vcos_log_error("Failed to get supported encodings");
+      vcos_log_error("Failed to get supported encodings");
    }
 }
