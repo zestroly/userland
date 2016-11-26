@@ -141,7 +141,7 @@ static void i2c_wr(int fd, uint16_t reg, uint8_t *values, uint32_t n)
    }
 }
 
-static u8 i2c_rd8(int fd, u16 reg)
+static inline u8 i2c_rd8(int fd, u16 reg)
 {
    u8 val;
 
@@ -150,18 +150,18 @@ static u8 i2c_rd8(int fd, u16 reg)
    return val;
 }
 
-static void i2c_wr8(int fd, u16 reg, u8 val)
+static inline void i2c_wr8(int fd, u16 reg, u8 val)
 {
    i2c_wr(fd, reg, &val, 1);
 }
 
-static void i2c_wr8_and_or(int fd, u16 reg,
+static inline void i2c_wr8_and_or(int fd, u16 reg,
       u8 mask, u8 val)
 {
    i2c_wr8(fd, reg, (i2c_rd8(fd, reg) & mask) | val);
 }
 
-static u16 i2c_rd16(int fd, u16 reg)
+static inline u16 i2c_rd16(int fd, u16 reg)
 {
    u16 val;
 
@@ -170,7 +170,7 @@ static u16 i2c_rd16(int fd, u16 reg)
    return val;
 }
 
-static void i2c_wr16(int fd, u16 reg, u16 val)
+static inline void i2c_wr16(int fd, u16 reg, u16 val)
 {
    i2c_wr(fd, reg, (u8 *)&val, 2);
 }
@@ -180,7 +180,7 @@ static void i2c_wr16_and_or(int fd, u16 reg, u16 mask, u16 val)
    i2c_wr16(fd, reg, (i2c_rd16(fd, reg) & mask) | val);
 }
 
-static u32 i2c_rd32(int fd, u16 reg)
+static inline u32 i2c_rd32(int fd, u16 reg)
 {
    u32 val;
 
@@ -189,7 +189,7 @@ static u32 i2c_rd32(int fd, u16 reg)
    return val;
 }
 
-static void i2c_wr32(int fd, u16 reg, u32 val)
+static inline void i2c_wr32(int fd, u16 reg, u32 val)
 {
    i2c_wr(fd, reg, (u8 *)&val, 4);
 }
@@ -588,13 +588,14 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
 {
    MMAL_STATUS_T status;
    vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
-   //vcos_log_error("File handle: %s", port->userdata);
+   //vcos_log_error("File handle: %p", port->userdata);
    int bytes_written = buffer->length;
 
    if (running)
    {
-      bytes_written = fwrite(buffer->data, 1, buffer->length, port->userdata);
-      fflush(port->userdata);
+      FILE *file = (FILE*)port->userdata;
+      bytes_written = fwrite(buffer->data, 1, buffer->length, file);
+      fflush(file);
 
       mmal_buffer_header_mem_unlock(buffer);
 
@@ -618,7 +619,7 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
  *
  * @param state Pointer to state
  */
-static FILE *open_filename(char *filename[])
+static FILE *open_filename(const char *filename)
 {
    FILE *new_handle = NULL;
 
@@ -682,7 +683,6 @@ int main (void)
    MMAL_POOL_T *pool;
    MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
    MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
-   FILE *file_handle = NULL;
 
    bcm_host_init();
    vcos_log_register("RaspiRaw", VCOS_LOG_CATEGORY);
@@ -1042,7 +1042,7 @@ int main (void)
 
    // open h264 file and put the file handle in userdata for the encoder output port
 
-   encoder_output->userdata = open_filename("test_encode.h264");
+   encoder_output->userdata = (void*)open_filename("test_encode.h264");
 
    //Create encoder output buffers
 
