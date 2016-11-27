@@ -1083,14 +1083,14 @@ int main (void)
    // Setup complete
 
    vcos_log_error("All done. Start streaming...");
-   //start_camera_streaming();
+   start_camera_streaming();
    vcos_log_error("View!");
 
    vcos_sleep(20000);
    running = 0;
 
    vcos_log_error("Stopping streaming...");
-   //stop_camera_streaming();
+   stop_camera_streaming();
 
 port_disable:
 
