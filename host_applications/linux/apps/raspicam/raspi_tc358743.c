@@ -79,7 +79,7 @@ struct sensor_regs {
 
 #define I2C_ADDR 0x0F
 
-#define CSI_IMAGE_ID 0x00
+#define CSI_IMAGE_ID 0x24
 #define CSI_DATA_LANES 2
 
 static void i2c_rd(int fd, uint16_t reg, uint8_t *values, uint32_t n)
@@ -295,7 +295,7 @@ struct cmds_t cmds[] =
 };
 #define NUM_REGS_CMD (sizeof(cmds)/sizeof(cmds[0]))
 
-//#define TOSHH2C_720P
+#define TOSHH2C_720P
 
 #ifdef TOSHH2C_720P
 // 720P with quantization flag
@@ -404,7 +404,7 @@ void start_camera_streaming(void)
    digitalWrite(41, 1); //Shutdown pin on B+ and Pi2
    digitalWrite(32, 1); //LED pin on B+ and Pi2
 #endif
-   fd = open("/dev/i2c-1", O_RDWR);
+   fd = open("/dev/i2c-0", O_RDWR);
    if (!fd)
    {
       vcos_log_error("Couldn't open I2C device");
@@ -500,7 +500,7 @@ void start_camera_streaming(void)
 void stop_camera_streaming(void)
 {
    int fd, i;
-   fd = open("/dev/i2c-1", O_RDWR);
+   fd = open("/dev/i2c-0", O_RDWR);
    if (!fd)
    {
       vcos_log_error("Couldn't open I2C device");
