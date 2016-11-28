@@ -598,6 +598,7 @@ int main (void)
    MMAL_STATUS_T status;
    MMAL_PORT_T *output, *input, *isp_input, *isp_output, *encoder_input, *encoder_output;
    MMAL_POOL_T *pool;
+   MMAL_CONNECTION_T *connection[4] = {0};
    MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
    MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
    int i2c_fd;
@@ -757,39 +758,13 @@ int main (void)
    vcos_log_error("Signal is %u x %u, frm_interval %u, so %u fps", width, height, frame_interval, fps);
    vcos_log_error("Frame w x h is %u x %u", frame_width, frame_height);
 
-   splitter->output[0]->buffer_size = 2764800;//splitter->output[0]->buffer_size_recommended;
-   splitter->output[0]->buffer_num = 3;//splitter->output[0]->buffer_num_recommended;
-   vcos_log_error("spliiter[0]:buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
-   status = mmal_port_format_commit(splitter->output[0]);
 
-   if(status != MMAL_SUCCESS)
-   {
-      vcos_log_error("Failed port_format_commit on splitter->output[0]");
-      mmal_log_dump_port(splitter->output[0]);
-      goto component_disable;
-   }
-
-   splitter->output[1]->buffer_size = 2764800;//splitter->output[1]->buffer_size_recommended;
-   splitter->output[1]->buffer_num = 3;//splitter->output[1]->buffer_num_recommended;
-   status = mmal_port_format_commit(splitter->output[1]);
-   //splitter->output[1]->buffer_size = splitter->output[1]->buffer_size_recommended;
-   //splitter->output[1]->buffer_num = 3;//splitter->output[1]->buffer_num_recommended;
-   vcos_log_error("spliiter[1]:buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
-
-   if(status != MMAL_SUCCESS)
-   {
-      vcos_log_error("Failed port_format_commit on splitter->output[1]");
-      mmal_log_dump_port(splitter->output[1]);
-      goto component_disable;
-   }
-
-
-   output->format->es->video.crop.width = width;//WIDTH;
-   output->format->es->video.crop.height = height;//HEIGHT;
+   output->format->es->video.crop.width = width;
+   output->format->es->video.crop.height = height;
    output->format->es->video.width = VCOS_ALIGN_UP(width, 32); //VCOS_ALIGN_UP(WIDTH, 32);
    output->format->es->video.height = VCOS_ALIGN_UP(height, 16); //VCOS_ALIGN_UP(HEIGHT, 16);
-   //output->format->es->video.frame_rate.num = 10000;
-   //output->format->es->video.frame_rate.den = frame_interval ? frame_interval : 10000;
+   output->format->es->video.frame_rate.num = 10000;
+   output->format->es->video.frame_rate.den = frame_interval ? frame_interval : 10000;
    output->format->encoding = ENCODING;
    status = mmal_port_format_commit(output);
 
@@ -803,69 +778,58 @@ int main (void)
    output->buffer_size = output->buffer_size_recommended;
    output->buffer_num = 3;
    vcos_log_error("output: buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
-   status = mmal_port_format_commit(output);
-   output->buffer_num = 3; //output->buffer_num_recommended;
+
+   vcos_log_error("Create connection rawcam output to isp input....");
+   status =  mmal_connection_create(&connection[0], output, isp_input, MMAL_CONNECTION_FLAG_TUNNELLING);
    if(status != MMAL_SUCCESS)
    {
-      vcos_log_error("Failed port_format_commit");
-      mmal_log_dump_port(output);
+      vcos_log_error("Failed to create connection status %d: rawcam->isp", status);
       goto component_disable;
    }
-   // copy the format of the rawcam output to the resizer input
-   mmal_format_copy(isp_input->format, output->format);
-   isp_input->buffer_num = 8;
-   vcos_log_error("Setting isp input port format to the same as the rawcam output");
-   status = mmal_port_format_commit(isp_input);
-   if (status != MMAL_SUCCESS)
-   {
-      printf("Couldn't set isp input port format : error %d", status);
-   }
 
-   // copy the isp input to the isp output
+   // ISP output port does not follow input, so do have to set that one up.
    mmal_format_copy(isp_output->format, isp_input->format);
    isp_output->format->encoding = MMAL_ENCODING_I420;
-   isp_output->format->es->video.width = VCOS_ALIGN_UP(width, 32);
-   isp_output->format->es->video.height = VCOS_ALIGN_UP(height, 16);
-   isp_output->format->es->video.crop.x = 0;
-   isp_output->format->es->video.crop.y = 0;
-   isp_output->format->es->video.crop.width = width;
-   isp_output->format->es->video.crop.height = height;
-   isp_output->format->es->video.frame_rate.num = 10000;
-   isp_output->format->es->video.frame_rate.den = frame_interval ? frame_interval : 10000;
-   isp_output->buffer_size = 2764800; //isp_output->buffer_size_recommended;
-   isp_output->buffer_num = 3; //isp_output->buffer_num_recommended;
-
-   vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
    vcos_log_error("Setting isp output port format");
    status = mmal_port_format_commit(isp_output);
    isp_output->buffer_size = isp_output->buffer_size_recommended;
    isp_output->buffer_num = isp_output->buffer_num_recommended;
    if (status != MMAL_SUCCESS)
    {
-      printf("Couldn't set resizer output port format : error %d", status);
+      vcos_log_error("Failed to create connection status %d: rawcam->isp", status);
+      goto component_disable;
    }
 
    //  Encoder setup
-
-   vcos_log_error("Setting encoder input port format to the same as the isp output");
-   mmal_format_copy(encoder_input->format, isp_output->format);
-   // Commit the port changes to the output port
-   status = mmal_port_format_commit(encoder_input);
-
-   if (status != MMAL_SUCCESS)
+   vcos_log_error("Create connection isp output to splitter input....");
+   status =  mmal_connection_create(&connection[1], isp_output, splitter->input[0], MMAL_CONNECTION_FLAG_TUNNELLING);
+   if(status != MMAL_SUCCESS)
    {
-      vcos_log_error("Unable to set format on encoder input port");
+      vcos_log_error("Failed to create connection status %d: isp->splitter", status);
+      goto component_disable;
    }
 
-   vcos_log_error("Setting encoder output port format to the same as the encoder input");
-   // We want same format on input and output
-   mmal_format_copy(encoder_output->format, encoder_input->format);
+   vcos_log_error("Create connection splitter output to render input....");
+   status =  mmal_connection_create(&connection[2], splitter->output[0], input, MMAL_CONNECTION_FLAG_TUNNELLING);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to create connection status %d: splitter->render", status);
+      goto component_disable;
+   }
+
+   vcos_log_error("Create connection splitter output2 to encoder input....");
+   status =  mmal_connection_create(&connection[3], splitter->output[1], encoder_input, MMAL_CONNECTION_FLAG_TUNNELLING);
+   if(status != MMAL_SUCCESS)
+   {
+      vcos_log_error("Failed to create connection status %d: splitter->encoder", status);
+      goto component_disable;
+   }
 
    // Only supporting H264 at the moment
    encoder_output->format->encoding = MMAL_ENCODING_H264;
 
    encoder_output->format->bitrate = 17000000;
-   encoder_output->buffer_size = 2764800; //encoder_output->buffer_size_recommended;
+   encoder_output->buffer_size = encoder_output->buffer_size_recommended;
 
    if (encoder_output->buffer_size < encoder_output->buffer_size_min)
       encoder_output->buffer_size = encoder_output->buffer_size_min;
@@ -877,7 +841,7 @@ int main (void)
 
    // We need to set the frame rate on output to 0, to ensure it gets
    // updated correctly from the input framerate when port connected
-   encoder_output->format->es->video.frame_rate.num = 60;//0;
+   encoder_output->format->es->video.frame_rate.num = fps;//0;
    encoder_output->format->es->video.frame_rate.den = 1;
 
    // Commit the port changes to the output port
@@ -923,10 +887,6 @@ int main (void)
       // Continue rather than abort..
    }
 
-   encoder_input->format->encoding = MMAL_ENCODING_RGB24;
-   // Commit the port changes to the input port
-   status = mmal_port_format_commit(encoder_input);
-
    if (status != MMAL_SUCCESS)
    {
       vcos_log_error("Unable to set format on video encoder input port");
@@ -962,7 +922,6 @@ int main (void)
    display_supported_encodings(input);
 */
 
-   MMAL_CONNECTION_T *connection[4] = {0};
 
    status = mmal_port_parameter_set_boolean(input, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
    if(status != MMAL_SUCCESS)
@@ -970,16 +929,6 @@ int main (void)
       vcos_log_error("Failed to set zero copy on video_render");
       goto component_disable;
    }
-
-   vcos_log_error("Create connections....");
-   vcos_log_error("Create connection rawcam output to isp input....");
-   status =  mmal_connection_create(&connection[0], output, isp_input, MMAL_CONNECTION_FLAG_TUNNELLING);
-   vcos_log_error("Create connection isp output to splitter input....");
-   status =  mmal_connection_create(&connection[1], isp_output, splitter->input[0], MMAL_CONNECTION_FLAG_TUNNELLING);
-   vcos_log_error("Create connection splitter output to render input....");
-   status =  mmal_connection_create(&connection[2], splitter->output[0], input, MMAL_CONNECTION_FLAG_TUNNELLING);
-   vcos_log_error("Create connection splitter output2 to encoder input....");
-   status =  mmal_connection_create(&connection[3], splitter->output[1], encoder_input, MMAL_CONNECTION_FLAG_TUNNELLING);
 
    if (status == MMAL_SUCCESS)
    {
