@@ -315,34 +315,34 @@ struct cmds_t cmds[] =
 #ifdef TOSHH2C_720P
 // 720P with quantization flag
 static unsigned char TOSHH2C_DEFAULT_EDID[] = //{
-   "\x00\xff\xff\xff\xff\xff\xff\x00\x52\x62\x88\x88\x00\x88\x88\x88"
-   "\x1c\x15\x01\x03\x80\x00\x00\x78\x0a\xEE\x91\xA3\x54\x4C\x99\x26"
-   "\x0F\x50\x54\x00\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-   "\x01\x01\x01\x01\x01\x01\x01\x1d\x00\x72\x51\xd0\x1e\x20\x6e\x28"
-   "\x55\x00\xc4\x8e\x21\x00\x00\x1e\x8c\x0a\xd0\x8a\x20\xe0\x2d\x10"
-   "\x10\x3e\x96\x00\x13\x8e\x21\x00\x00\x1e\x00\x00\x00\xfc\x00\x54"
-   "\x6f\x73\x68\x69\x62\x61\x2d\x48\x32\x43\x0a\x20\x00\x00\x00\xFD"
-   "\x00\x3b\x3d\x0f\x2e\x0f\x1e\x0a\x20\x20\x20\x20\x20\x20\x01\x67"
-   "\x02\x03\x1A\x42\x47\x84\x13\x03\x02\x07\x06\x01\x23\x09\x07\x07"
-   "\x66\x03\x0c\x00\x30\x00\x80\xE3\x00\x7F\x8c\x0a\xd0\x8a\x20\xe0"
-   "\x2d\x10\x10\x3e\x96\x00\xc4\x8e\x21\x00\x00\x18\x8c\x0a\xd0\x8a"
-   "\x20\xe0\x2d\x10\x10\x3e\x96\x00\x13\x8e\x21\x00\x00\x18\x8c\x0a"
-   "\xa0\x14\x51\xf0\x16\x00\x26\x7c\x43\x00\x13\x8e\x21\x00\x00\x98"
-   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x20";
-#else
+    "00ffffffffffff005262888800888888"
+    "1c150103800000780aEE91A3544C9926"
+    "0F505400000001010101010101010101"
+    "010101010101011d007251d01e206e28"
+    "5500c48e2100001e8c0ad08a20e02d10"
+    "103e9600138e2100001e000000fc0054"
+    "6f73686962612d4832430a20000000FD"
+    "003b3d0f2e0f1e0a2020202020200167"
+    "020320424d841303021211012021223c"
+    "3d3e2309070766030c00300080E3007F"
+    "8c0ad08a20e02d10103e9600c48e2100"
+    "00188c0ad08a20e02d10103e9600138e"
+    "210000188c0aa01451f01600267c4300"
+    "138e2100009800000000000000000000"
+    "00000000000000000000000000000000"
+    "00000000000000000000000000000020";
+ #else
 
 // 480P EDID
 static unsigned char TOSHH2C_DEFAULT_EDID[] = //{
-"\x00\xFF\xFF\xFF\xFF\xFF\xFF\x00\x52\x62\x88\x88\x00\x88\x88\x88"
-"\x1C\x15\x01\x03\x80\x00\x00\x78\x0A\xEE\x91\xA3\x54\x4C\x99\x26"
-"\x0F\x50\x54\x00\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-"\x01\x01\x01\x01\x01\x01\x8C\x0A\xD0\x8A\x20\xE0\x2D\x10\x10\x3E"
-"\x96\x00\x13\x8E\x21\x00\x00\x1E\x00\x00\x00\xFC\x00\x54\x6F\x73"
-"\x68\x69\x62\x61\x2D\x48\x32\x43\x0A\x20\x00\x00\x00\xFD\x00\x3B"
-"\x3D\x0F\x2E\x0F\x00\x0A\x20\x20\x20\x20\x20\x20\x00\x00\x00\x10"
-"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xC8";
+   "00FFFFFFFFFFFF005262888800888888"
+   "1C150103800000780AEE91A3544C9926"
+   "0F505400000001010101010101010101"
+   "0101010101018C0AD08A20E02D10103E"
+   "9600138E2100001E000000FC00546F73"
+   "686962612D4832430A20000000FD003B"
+   "3D0F2E0F000A20202020202000000010"
+   "000000000000000000000000000001C8";
 
 #endif
 
@@ -440,6 +440,16 @@ void write_regs(int fd, struct cmds_t *regs, int count)
    }
 }
 
+unsigned char ascii_to_hex(unsigned char c)
+{
+   if(c>='0' && c<='9')
+      return (c-'0');
+   else if (c>='A' && c<='F')
+      return ((c-'A') + 10);
+   else if (c>='a' && c<='f')
+      return ((c-'a') + 10);
+   return 0;
+}
 void start_camera_streaming(int fd)
 {
 #ifdef DO_PIN_CONFIG
@@ -458,25 +468,28 @@ void start_camera_streaming(int fd)
       // default is 256 bytes, 256 / 16
    // write in groups of 16
    {
+      u8 edid[256];
       int i, j;
       unsigned char checksum = 0;
-      for (i = 0; i < sizeof(TOSHH2C_DEFAULT_EDID); i += 16)
+      for (i = 0; i < sizeof(TOSHH2C_DEFAULT_EDID)/2; i += 16)
       {
          for (j = 0; j < 15; j++)
          {
-            checksum -= TOSHH2C_DEFAULT_EDID[i + j];
+            edid[i + j] = (ascii_to_hex(TOSHH2C_DEFAULT_EDID[i+j*2])<<4) +
+                           ascii_to_hex(TOSHH2C_DEFAULT_EDID[i+j*2 + 1]);
+            checksum -= edid[i + j];
          }
          // if checksum byte
          if (i == (7 * 16) || i == (15 * 16))
          {
-            TOSHH2C_DEFAULT_EDID[i + 15] = checksum;
+            edid[i + 15] = checksum;
             checksum = 0;
          }
          else
          {
-            checksum -= TOSHH2C_DEFAULT_EDID[i + 15];
+            checksum -= edid[i + 15];
          }
-         i2c_wr(fd, 0x8C00 + i, &TOSHH2C_DEFAULT_EDID[i], 16);
+         i2c_wr(fd, 0x8C00 + i, &edid[i], 16);
       }
    }
    write_regs(fd, cmds2, NUM_REGS_CMD2);
