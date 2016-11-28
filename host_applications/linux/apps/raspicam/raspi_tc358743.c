@@ -25,8 +25,6 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-//Hacked firmware, so can use a mmal_connection
-//#define MANUAL_CONNECTION
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,8 +68,6 @@ struct sensor_regs {
    uint8_t  data;
 };
 
-#define WIDTH 1280
-#define HEIGHT 720
 #define ENCODING MMAL_ENCODING_BGR24 //MMAL_ENCODING_I420// //MMAL_ENCODING_YUYV
 
 #define UNPACK MMAL_CAMERA_RX_CONFIG_UNPACK_NONE
@@ -106,6 +102,9 @@ static void i2c_rd(int fd, uint16_t reg, uint8_t *values, uint32_t n)
    msgset.nmsgs = 2;
 
    err = ioctl(fd, I2C_RDWR, &msgset);
+   if(err != msgset.nmsgs)
+      vcos_log_error("%s: reading register 0x%x from 0x%x failed, err %d\n",
+            __func__, reg, I2C_ADDR, err);
 }
 
 static void i2c_wr(int fd, uint16_t reg, uint8_t *values, uint32_t n)
@@ -192,6 +191,22 @@ static inline u32 i2c_rd32(int fd, u16 reg)
 static inline void i2c_wr32(int fd, u16 reg, u32 val)
 {
    i2c_wr(fd, reg, (u8 *)&val, 4);
+}
+
+static inline int no_signal(int fd)
+{
+   int ret;
+   ret = i2c_rd8(fd, SYS_STATUS);
+   vcos_log_error("no_signal read %02X", ret);
+   return !(ret & MASK_S_TMDS);
+}
+
+static inline int no_sync(int fd)
+{
+   int ret;
+   ret = i2c_rd8(fd, SYS_STATUS);
+   vcos_log_error("no_sync read %02X", ret);
+   return !(ret & MASK_S_SYNC);
 }
 
 #define CC_RGB_PASSTHROUGH      1
@@ -374,9 +389,14 @@ struct cmds_t cmds2[] =
    {0x9007, 0x10, 1},      // [5:0]  Auto clear by not receiving 16V GBD
    {0x854A, 0x01, 1},      // HDMIRx Initialization Completed, THIS MUST BE SET AT THE LAST!
 
-   {0x0004, r0004 | 0x03, 2},        // Enable tx buffers
 };
 #define NUM_REGS_CMD2 (sizeof(cmds2)/sizeof(cmds2[0]))
+
+struct cmds_t cmds3[] =
+{
+   {0x0004, r0004 | 0x03, 2},        // Enable tx buffer_size
+};
+#define NUM_REGS_CMD3 (sizeof(cmds3)/sizeof(cmds3[0]))
 
 struct cmds_t stop_cmds[] =
 {
@@ -388,10 +408,40 @@ struct cmds_t stop_cmds[] =
 };
 #define NUM_REGS_STOP (sizeof(stop_cmds)/sizeof(stop_cmds[0]))
 
-void start_camera_streaming(void)
+void write_regs(int fd, struct cmds_t *regs, int count)
 {
-   int fd, i;
+   int i;
+   for (i=0; i<count; i++)
+   {
+      switch(regs[i].num_bytes)
+      {
+         case 1:
+            i2c_wr8(fd, regs[i].addr, (uint8_t)regs[i].value);
+            break;
+         case 2:
+            i2c_wr16(fd, regs[i].addr, (uint16_t)regs[i].value);
+            break;
+         case 4:
+            i2c_wr32(fd, regs[i].addr, regs[i].value);
+            break;
+         case 0x11:
+            i2c_wr8_and_or(fd, regs[i].addr, 0xFF, (uint8_t)regs[i].value);
+            break;
+         case 0x12:
+            i2c_wr16_and_or(fd, regs[i].addr, 0xFFFF, (uint16_t)regs[i].value);
+            break;
+         case 0xFFFF:
+            vcos_sleep(regs[i].value);
+            break;
+         default:
+            vcos_log_error("%u bytes specified in entry %d - not supported", regs[i].num_bytes, i);
+            break;
+      }
+   }
+}
 
+void start_camera_streaming(int fd)
+{
 #ifdef DO_PIN_CONFIG
    wiringPiSetupGpio();
    pinModeAlt(0, INPUT);
@@ -404,44 +454,7 @@ void start_camera_streaming(void)
    digitalWrite(41, 1); //Shutdown pin on B+ and Pi2
    digitalWrite(32, 1); //LED pin on B+ and Pi2
 #endif
-   fd = open("/dev/i2c-0", O_RDWR);
-   if (!fd)
-   {
-      vcos_log_error("Couldn't open I2C device");
-      return;
-   }
-   if(ioctl(fd, I2C_SLAVE, 0x0F) < 0)
-   {
-      vcos_log_error("Failed to set I2C address");
-      return;
-   }
-   for (i=0; i<NUM_REGS_CMD; i++)
-   {
-      switch(cmds[i].num_bytes)
-      {
-         case 1:
-            i2c_wr8(fd, cmds[i].addr, (uint8_t)cmds[i].value);
-            break;
-         case 2:
-            i2c_wr16(fd, cmds[i].addr, (uint16_t)cmds[i].value);
-            break;
-         case 4:
-            i2c_wr32(fd, cmds[i].addr, cmds[i].value);
-            break;
-         case 0x11:
-            i2c_wr8_and_or(fd, cmds[i].addr, 0xFF, (uint8_t)cmds[i].value);
-            break;
-         case 0x12:
-            i2c_wr16_and_or(fd, cmds[i].addr, 0xFFFF, (uint16_t)cmds[i].value);
-            break;
-         case 0xFFFF:
-            vcos_sleep(cmds[i].value);
-            break;
-         default:
-            vcos_log_error("%u bytes specified in entry %d - not supported", cmds[i].num_bytes, i);
-            break;
-      }
-   }
+   write_regs(fd, cmds, NUM_REGS_CMD);
       // default is 256 bytes, 256 / 16
    // write in groups of 16
    {
@@ -466,79 +479,12 @@ void start_camera_streaming(void)
          i2c_wr(fd, 0x8C00 + i, &TOSHH2C_DEFAULT_EDID[i], 16);
       }
    }
-   for (i=0; i<NUM_REGS_CMD2; i++)
-   {
-      switch(cmds2[i].num_bytes)
-      {
-         case 1:
-            i2c_wr8(fd, cmds2[i].addr, (uint8_t)cmds2[i].value);
-            break;
-         case 2:
-            i2c_wr16(fd, cmds2[i].addr, (uint16_t)cmds2[i].value);
-            break;
-         case 4:
-            i2c_wr32(fd, cmds2[i].addr, cmds2[i].value);
-            break;
-         case 0x11:
-            i2c_wr8_and_or(fd, cmds2[i].addr, 0xFF, (uint8_t)cmds2[i].value);
-            break;
-         case 0x12:
-            i2c_wr16_and_or(fd, cmds2[i].addr, 0xFFFF, (uint16_t)cmds2[i].value);
-            break;
-         case 0xFFFF:
-            vcos_sleep(cmds2[i].value);
-            break;
-         default:
-            vcos_log_error("%u bytes specified in entry %d - not supported", cmds2[i].num_bytes, i);
-            break;
-      }
-   }
-
-   close(fd);
+   write_regs(fd, cmds2, NUM_REGS_CMD2);
 }
 
-void stop_camera_streaming(void)
+void stop_camera_streaming(int fd)
 {
-   int fd, i;
-   fd = open("/dev/i2c-0", O_RDWR);
-   if (!fd)
-   {
-      vcos_log_error("Couldn't open I2C device");
-      return;
-   }
-   if(ioctl(fd, I2C_SLAVE, 0x36) < 0)
-   {
-      vcos_log_error("Failed to set I2C address");
-      return;
-   }
-   for (i=0; i<NUM_REGS_STOP; i++)
-   {
-      switch(stop_cmds[i].num_bytes)
-      {
-         case 1:
-            i2c_wr8(fd, stop_cmds[i].addr, (uint8_t)stop_cmds[i].value);
-            break;
-         case 2:
-            i2c_wr16(fd, stop_cmds[i].addr, (uint16_t)stop_cmds[i].value);
-            break;
-         case 4:
-            i2c_wr32(fd, stop_cmds[i].addr, stop_cmds[i].value);
-            break;
-         case 0x11:
-            i2c_wr8_and_or(fd, stop_cmds[i].addr, 0xFF, (uint8_t)stop_cmds[i].value);
-            break;
-         case 0x12:
-            i2c_wr16_and_or(fd, stop_cmds[i].addr, 0xFFFF, (uint16_t)stop_cmds[i].value);
-            break;
-         case 0xFFFF:
-            vcos_sleep(stop_cmds[i].value);
-            break;
-         default:
-            vcos_log_error("%u bytes specified in entry %d - not supported", stop_cmds[i].num_bytes, i);
-            break;
-      }
-   }
-   close(fd);
+   write_regs(fd, stop_cmds, NUM_REGS_STOP);
 #ifdef DO_PIN_CONFIG
    digitalWrite(41, 0); //Shutdown pin on B+ and Pi2
    digitalWrite(32, 0); //LED pin on B+ and Pi2
@@ -546,35 +492,6 @@ void stop_camera_streaming(void)
 }
 
 int running = 0;
-#ifdef MANUAL_CONNECTION
-static void callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
-{
-   static int count = 0;
-   vcos_log_error("Buffer %p returned, filled %d, timestamp %llu, flags %04X", buffer, buffer->length, buffer->pts, buffer->flags);
-   if(running)
-   {
-      if(!(buffer->flags&MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO) &&
-                   (((count++)%15)==0))
-      {
-         // Save every 15th frame
-         // SD card access is to slow to do much more.
-         FILE *file;
-         char filename[20];
-         sprintf(filename, "raw%04d.raw", count);
-         file = fopen(filename, "wb");
-         if(file)
-         {
-            fwrite(buffer->data, buffer->length, 1, file);
-            fclose(file);
-         }
-      }
-      buffer->length = 0;
-      mmal_port_send_buffer(port, buffer);
-   }
-   else
-      mmal_buffer_header_release(buffer);
-}
-#endif
 
 /**
  *  buffer header callback function for encoder
@@ -683,6 +600,21 @@ int main (void)
    MMAL_POOL_T *pool;
    MMAL_PARAMETER_CAMERA_RX_CONFIG_T rx_cfg = {{MMAL_PARAMETER_CAMERA_RX_CONFIG, sizeof(rx_cfg)}};
    MMAL_PARAMETER_CAMERA_RX_TIMING_T rx_timing = {{MMAL_PARAMETER_CAMERA_RX_TIMING, sizeof(rx_timing)}};
+   int i2c_fd;
+   unsigned int width, height, fps, frame_interval;
+   unsigned int frame_width, frame_height;
+
+   i2c_fd = open("/dev/i2c-0", O_RDWR);
+   if (!i2c_fd)
+   {
+      vcos_log_error("Couldn't open I2C device");
+      return -1;
+   }
+   if(ioctl(i2c_fd, I2C_SLAVE, 0x0F) < 0)
+   {
+      vcos_log_error("Failed to set I2C address");
+      return -1;
+   }
 
    bcm_host_init();
    vcos_log_register("RaspiRaw", VCOS_LOG_CATEGORY);
@@ -796,49 +728,87 @@ int main (void)
       goto component_disable;
    }
 
-   splitter->output[0]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
-   splitter->output[0]->buffer_num = 8; //isp_output->buffer_num_recommended;
-   vcos_log_error("buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
+   start_camera_streaming(i2c_fd);
+   vcos_sleep(500);  //Give a chance to detect signal
+   vcos_log_error("Waiting to detect signal...");
+
+   int count=0;
+   while((count<20) && (no_sync(i2c_fd) || no_signal(i2c_fd)))
+   {
+      vcos_sleep(200);
+      count++;
+   }
+   vcos_log_error("Signal reported");
+   width = ((i2c_rd8(i2c_fd, DE_WIDTH_H_HI) & 0x1f) << 8) +
+      i2c_rd8(i2c_fd, DE_WIDTH_H_LO);
+   height = ((i2c_rd8(i2c_fd, DE_WIDTH_V_HI) & 0x1f) << 8) +
+      i2c_rd8(i2c_fd, DE_WIDTH_V_LO);
+   frame_width = ((i2c_rd8(i2c_fd, H_SIZE_HI) & 0x1f) << 8) +
+      i2c_rd8(i2c_fd, H_SIZE_LO);
+   frame_height = (((i2c_rd8(i2c_fd, V_SIZE_HI) & 0x3f) << 8) +
+      i2c_rd8(i2c_fd, V_SIZE_LO)) / 2;
+
+   /* frame interval in milliseconds * 10
+    * Require SYS_FREQ0 and SYS_FREQ1 are precisely set */
+   frame_interval = ((i2c_rd8(i2c_fd, FV_CNT_HI) & 0x3) << 8) +
+      i2c_rd8(i2c_fd, FV_CNT_LO);
+   fps =  (frame_interval > 0) ?
+             (10000/frame_interval) : 0;
+   vcos_log_error("Signal is %u x %u, frm_interval %u, so %u fps", width, height, frame_interval, fps);
+   vcos_log_error("Frame w x h is %u x %u", frame_width, frame_height);
+
+   splitter->output[0]->buffer_size = 2764800;//splitter->output[0]->buffer_size_recommended;
+   splitter->output[0]->buffer_num = 3;//splitter->output[0]->buffer_num_recommended;
+   vcos_log_error("spliiter[0]:buffer size is %d bytes, num %d", splitter->output[0]->buffer_size, splitter->output[0]->buffer_num);
    status = mmal_port_format_commit(splitter->output[0]);
 
    if(status != MMAL_SUCCESS)
    {
       vcos_log_error("Failed port_format_commit on splitter->output[0]");
+      mmal_log_dump_port(splitter->output[0]);
       goto component_disable;
    }
 
-   splitter->output[1]->buffer_size = 2764800; //isp_output->buffer_size_recommended;
-   splitter->output[1]->buffer_num = 8; //isp_output->buffer_num_recommended;
-   vcos_log_error("buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
+   splitter->output[1]->buffer_size = 2764800;//splitter->output[1]->buffer_size_recommended;
+   splitter->output[1]->buffer_num = 3;//splitter->output[1]->buffer_num_recommended;
    status = mmal_port_format_commit(splitter->output[1]);
+   //splitter->output[1]->buffer_size = splitter->output[1]->buffer_size_recommended;
+   //splitter->output[1]->buffer_num = 3;//splitter->output[1]->buffer_num_recommended;
+   vcos_log_error("spliiter[1]:buffer size is %d bytes, num %d", splitter->output[1]->buffer_size, splitter->output[1]->buffer_num);
 
    if(status != MMAL_SUCCESS)
    {
       vcos_log_error("Failed port_format_commit on splitter->output[1]");
+      mmal_log_dump_port(splitter->output[1]);
       goto component_disable;
    }
 
 
-   output->format->es->video.crop.width = WIDTH;
-   output->format->es->video.crop.height = HEIGHT;
-   output->format->es->video.width = VCOS_ALIGN_UP(WIDTH, 32);
-   output->format->es->video.height = VCOS_ALIGN_UP(HEIGHT, 16);
+   output->format->es->video.crop.width = width;//WIDTH;
+   output->format->es->video.crop.height = height;//HEIGHT;
+   output->format->es->video.width = VCOS_ALIGN_UP(width, 32); //VCOS_ALIGN_UP(WIDTH, 32);
+   output->format->es->video.height = VCOS_ALIGN_UP(height, 16); //VCOS_ALIGN_UP(HEIGHT, 16);
+   //output->format->es->video.frame_rate.num = 10000;
+   //output->format->es->video.frame_rate.den = frame_interval ? frame_interval : 10000;
    output->format->encoding = ENCODING;
    status = mmal_port_format_commit(output);
 
    if(status != MMAL_SUCCESS)
    {
-      vcos_log_error("Failed port_format_commit");
+      vcos_log_error("output: Failed port_format_commit");
+      mmal_log_dump_port(output);
       goto component_disable;
    }
 
    output->buffer_size = output->buffer_size_recommended;
-   output->buffer_num = 8; //output->buffer_num_recommended;
-   vcos_log_error("buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
+   output->buffer_num = 3;
+   vcos_log_error("output: buffer size is %d bytes, num %d", output->buffer_size, output->buffer_num);
    status = mmal_port_format_commit(output);
+   output->buffer_num = 3; //output->buffer_num_recommended;
    if(status != MMAL_SUCCESS)
    {
       vcos_log_error("Failed port_format_commit");
+      mmal_log_dump_port(output);
       goto component_disable;
    }
    // copy the format of the rawcam output to the resizer input
@@ -854,17 +824,22 @@ int main (void)
    // copy the isp input to the isp output
    mmal_format_copy(isp_output->format, isp_input->format);
    isp_output->format->encoding = MMAL_ENCODING_I420;
-   isp_output->format->es->video.width = WIDTH;
-   isp_output->format->es->video.height = HEIGHT;
+   isp_output->format->es->video.width = VCOS_ALIGN_UP(width, 32);
+   isp_output->format->es->video.height = VCOS_ALIGN_UP(height, 16);
    isp_output->format->es->video.crop.x = 0;
    isp_output->format->es->video.crop.y = 0;
-   isp_output->format->es->video.crop.width = WIDTH;
-   isp_output->format->es->video.crop.height = HEIGHT;
+   isp_output->format->es->video.crop.width = width;
+   isp_output->format->es->video.crop.height = height;
+   isp_output->format->es->video.frame_rate.num = 10000;
+   isp_output->format->es->video.frame_rate.den = frame_interval ? frame_interval : 10000;
    isp_output->buffer_size = 2764800; //isp_output->buffer_size_recommended;
-   isp_output->buffer_num = 8; //isp_output->buffer_num_recommended;
+   isp_output->buffer_num = 3; //isp_output->buffer_num_recommended;
+
    vcos_log_error("buffer size is %d bytes, num %d", isp_output->buffer_size, isp_output->buffer_num);
    vcos_log_error("Setting isp output port format");
    status = mmal_port_format_commit(isp_output);
+   isp_output->buffer_size = isp_output->buffer_size_recommended;
+   isp_output->buffer_num = isp_output->buffer_num_recommended;
    if (status != MMAL_SUCCESS)
    {
       printf("Couldn't set resizer output port format : error %d", status);
@@ -1083,14 +1058,15 @@ int main (void)
    // Setup complete
 
    vcos_log_error("All done. Start streaming...");
-   start_camera_streaming();
+   write_regs(i2c_fd, cmds3, NUM_REGS_CMD3);
+
    vcos_log_error("View!");
 
-   vcos_sleep(20000);
+   vcos_sleep(10000);
    running = 0;
 
    vcos_log_error("Stopping streaming...");
-   stop_camera_streaming();
+   stop_camera_streaming(i2c_fd);
 
 port_disable:
 
@@ -1144,6 +1120,7 @@ component_destroy:
    mmal_component_destroy(splitter);
    mmal_component_destroy(encoder);
    
+   close(i2c_fd);
    return 0;
 }
 
