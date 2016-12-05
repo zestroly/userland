@@ -76,7 +76,7 @@ struct sensor_regs {
 #define I2C_ADDR 0x0F
 
 #define CSI_IMAGE_ID 0x24
-#define CSI_DATA_LANES 2
+#define CSI_DATA_LANES 1
 
 static void i2c_rd(int fd, uint16_t reg, uint8_t *values, uint32_t n)
 {
@@ -257,7 +257,7 @@ struct cmds_t cmds[] =
 
    {0x0000, 1, 0xFFFF},      // V054 requires us to wait 1ms for PLL to lock
    {0x0002, 0x0000, 2},    // Release Reset, Exit Sleep
-   {0x0006, 0x0008, 2},    // FIFO level
+   {0x0006, 0x0080, 2},    // FIFO level
    {0x0008, 0x005f, 2},    // Audio buffer level -- 96 bytes = 0x5F + 1
    {0x0014, 0xFFFF, 2},     // Clear HDMI Rx, CSI Tx and System Interrupt Status
    {0x0016, 0x051f, 2},    // Enable HDMI-Rx Interrupt (bit 9), Sys interrupt (bit 5). Disable others. 11-15, 6-7 reserved
@@ -266,7 +266,7 @@ struct cmds_t cmds[] =
    {0x0004, r0004,  2},    // PwrIso[15], 422 output, send infoframe
    {0x0140, 0x0,    4},    //Enable CSI-2 Clock lane
    {0x0144, 0x0,    4},    //Enable CSI-2 Data lane 0
-   {0x0148, 0x0,    4},    //Enable CSI-2 Data lane 1
+   {0x0148, 0x1,    4},    //Enable CSI-2 Data lane 1
    {0x014C, 0x1,    4},    //Disable CSI-2 Data lane 2
    {0x0150, 0x1,    4},    //Disable CSI-2 Data lane 3
 
@@ -282,7 +282,7 @@ struct cmds_t cmds[] =
    {0x0204, 0x00000001, 4},   // Start PPI
 
    {0x0518, 0x00000001, 4},   // Start CSI-2 Tx
-   {0x0500, 0xA3008082, 4},   // SetBit[31:29]
+   {0x0500, 0xA3008080, 4},   // SetBit[31:29]
       //
       //    1010 0011 0000 0000    1000 0000 1010 0010
 
@@ -685,7 +685,6 @@ int main (void)
    rx_cfg.data_lanes = CSI_DATA_LANES;
    rx_cfg.unpack = UNPACK;
    rx_cfg.pack = PACK;
-   rx_cfg.data_lanes = 2;
    rx_cfg.embedded_data_lines = 128;
    vcos_log_error("Set pack to %d, unpack to %d", rx_cfg.unpack, rx_cfg.pack);
    status = mmal_port_parameter_set(output, &rx_cfg.hdr);
