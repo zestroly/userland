@@ -1,6 +1,7 @@
 /*
 Copyright (c) 2015, Raspberry Pi Foundation
 Copyright (c) 2015, Dave Stevenson
+Copyright (c) 2017, Ben Kazemi
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -25,6 +26,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+
+#include <getopt.h>
+#include <string.h>
+
+#include <signal.h>
+#include <unistd.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +69,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define u8  uint8_t
 #define u16 uint16_t
 #define u32 uint32_t
+   
+u8 optional_file = 1; 
+u8 called_quit = 0;
 
 struct sensor_regs {
    uint16_t reg;
@@ -76,7 +86,8 @@ struct sensor_regs {
 #define I2C_ADDR 0x0F
 
 #define CSI_IMAGE_ID 0x24
-#define CSI_DATA_LANES 1
+
+void signal_callback_handler(int);
 
 static void i2c_rd(int fd, uint16_t reg, uint8_t *values, uint32_t n)
 {
@@ -249,100 +260,42 @@ struct cmds_t {
    uint32_t value;
    int num_bytes;
 };
-struct cmds_t cmds[] = 
-{
-   // Turn off power and put in reset
-   // handle.first_boot = VC_FALSE;
-   {0x0002, 0x0F00, 2},    // Assert Reset, [0] = 0: Exit Sleep, wait
 
-   {0x0000, 1, 0xFFFF},      // V054 requires us to wait 1ms for PLL to lock
-   {0x0002, 0x0000, 2},    // Release Reset, Exit Sleep
-   {0x0006, 0x0080, 2},    // FIFO level
-   {0x0008, 0x005f, 2},    // Audio buffer level -- 96 bytes = 0x5F + 1
-   {0x0014, 0xFFFF, 2},     // Clear HDMI Rx, CSI Tx and System Interrupt Status
-   {0x0016, 0x051f, 2},    // Enable HDMI-Rx Interrupt (bit 9), Sys interrupt (bit 5). Disable others. 11-15, 6-7 reserved
-   {0x0020, 0x8111, 2},        // PRD[15:12], FBD[8:0]
-   {0x0022, 0x0213, 2},    // FRS[11:10], LBWS[9:8]= 2, Clock Enable[4] = 1,  ResetB[1] = 1,  PLL En[0]
-   {0x0004, r0004,  2},    // PwrIso[15], 422 output, send infoframe
-   {0x0140, 0x0,    4},    //Enable CSI-2 Clock lane
-   {0x0144, 0x0,    4},    //Enable CSI-2 Data lane 0
-   {0x0148, 0x1,    4},    //Enable CSI-2 Data lane 1
-   {0x014C, 0x1,    4},    //Disable CSI-2 Data lane 2
-   {0x0150, 0x1,    4},    //Disable CSI-2 Data lane 3
 
-   {0x0210, 0x00002988, 4},   // LP11 = 100 us for D-PHY Rx Init
-   {0x0214, 0x00000005, 4},   // LP Tx Count[10:0]
-   {0x0218, 0x00001d04, 4},   // TxClk_Zero[15:8]
-   {0x021C, 0x00000002, 4},   // TClk_Trail =
-   {0x0220, 0x00000504, 4},   // HS_Zero[14:8] =
-   {0x0224, 0x00004600, 4},   // TWAKEUP Counter[15:0]
-   {0x0228, 0x0000000A, 4},   // TxCLk_PostCnt[10:0]
-   {0x022C, 0x00000004, 4},   // THS_Trail =
-   {0x0234, 0x0000001F, 4},   // Enable Voltage Regulator for CSI (4 Data + Clk) Lanes
-   {0x0204, 0x00000001, 4},   // Start PPI
-
-   {0x0518, 0x00000001, 4},   // Start CSI-2 Tx
-   {0x0500, 0xA3008080, 4},   // SetBit[31:29]
-      //
-      //    1010 0011 0000 0000    1000 0000 1010 0010
-
-   {0x8502, 0x01, 1},      // Enable HPD DDC Power Interrupt
-   {0x8512, 0xFE, 1},      // Disable HPD DDC Power Interrupt Mask
-   {0x8513, (uint8_t) ~0x20, 1},    // Receive interrupts for video format change (bit 5)
-   {0x8515, (uint8_t) ~0x02, 1},    // Receive interrupts for format change (bit 1)
-
-   {0x8531, 0x01, 1},      // [1] = 1: RefClk 42 MHz, [0] = 1, DDC5V Auto detection
-   {0x8540, 0x0A8C, 2}, // SysClk Freq count with RefClk = 27 MHz (0x1068 for 42 MHz, default)
-   {0x8630, 0x00041eb0, 4},   // Audio FS Lock Detect Control [19:0]: 041EB0 for 27 MHz, 0668A0 for 42 MHz (default)
-   {0x8670, 0x01, 1},         // SysClk 27/42 MHz: 00:= 42 MHz
-
-   {0x8532, 0x80, 1},      // PHY_AUTO_RST[7:4] = 1600 us, PHY_Range_Mode = 12.5 us
-   {0x8536, 0x40, 1},      // [7:4] Ibias: TBD, [3:0] BGR_CNT: Default
-   {0x853F, 0x0A, 1},      // [3:0] = 0x0a: PHY TMDS CLK line squelch level: 50 uA
-
-   {0x8543, 0x32, 1},      // [5:4] = 2'b11: 5V Comp, [1:0] = 10, DDC 5V active detect delay setting: 100 ms
-   {0x8544, 0x10, 1},      // DDC5V detection interlock -- enable
-   {0x8545, 0x31, 1},      //  [5:4] = 2'b11: Audio PLL charge pump setting to Normal, [0] = 1: DAC/PLL Power On
-   {0x8546, 0x2D, 1},      // [7:0] = 0x2D: AVMUTE automatic clear setting (when in MUTE and no AVMUTE CMD received) 45 * 100 ms
-
-   {0x85C7, 0x01, 1},      // [6:4] EDID_SPEED: 100 KHz, [1:0] EDID_MODE: Internal EDID-RAM & DDC2B mode
-   {0x85CB, 0x01, 1},      // EDID Data size read from EEPROM EDID_LEN[10:8] = 0x01, 256-Byte
-};
-#define NUM_REGS_CMD (sizeof(cmds)/sizeof(cmds[0]))
 
 #define TOSHH2C_720P
 
 #ifdef TOSHH2C_720P
 // 720P with quantization flag
 static unsigned char TOSHH2C_DEFAULT_EDID[] = //{
-    "00ffffffffffff005262888800888888"
-    "1c150103800000780aEE91A3544C9926"
-    "0F505400000001010101010101010101"
-    "010101010101011d007251d01e206e28"
-    "5500c48e2100001e8c0ad08a20e02d10"
-    "103e9600138e2100001e000000fc0054"
-    "6f73686962612d4832430a20000000FD"
-    "003b3d0f2e0f1e0a2020202020200167"
-    "020320424d841303021211012021223c"
-    "3d3e2309070766030c00300080E3007F"
-    "8c0ad08a20e02d10103e9600c48e2100"
-    "00188c0ad08a20e02d10103e9600138e"
-    "210000188c0aa01451f01600267c4300"
-    "138e2100009800000000000000000000"
-    "00000000000000000000000000000000"
-    "00000000000000000000000000000020";
- #else
+   "\x00\xff\xff\xff\xff\xff\xff\x00\x52\x62\x88\x88\x00\x88\x88\x88"
+   "\x1c\x15\x01\x03\x80\x00\x00\x78\x0a\xEE\x91\xA3\x54\x4C\x99\x26"
+   "\x0F\x50\x54\x00\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+   "\x01\x01\x01\x01\x01\x01\x01\x1d\x00\x72\x51\xd0\x1e\x20\x6e\x28"
+   "\x55\x00\xc4\x8e\x21\x00\x00\x1e\x8c\x0a\xd0\x8a\x20\xe0\x2d\x10"
+   "\x10\x3e\x96\x00\x13\x8e\x21\x00\x00\x1e\x00\x00\x00\xfc\x00\x54"
+   "\x6f\x73\x68\x69\x62\x61\x2d\x48\x32\x43\x0a\x20\x00\x00\x00\xFD"
+   "\x00\x3b\x3d\x0f\x2e\x0f\x1e\x0a\x20\x20\x20\x20\x20\x20\x01\x67"
+   "\x02\x03\x1A\x42\x47\x84\x13\x03\x02\x07\x06\x01\x23\x09\x07\x07"
+   "\x66\x03\x0c\x00\x30\x00\x80\xE3\x00\x7F\x8c\x0a\xd0\x8a\x20\xe0"
+   "\x2d\x10\x10\x3e\x96\x00\xc4\x8e\x21\x00\x00\x18\x8c\x0a\xd0\x8a"
+   "\x20\xe0\x2d\x10\x10\x3e\x96\x00\x13\x8e\x21\x00\x00\x18\x8c\x0a"
+   "\xa0\x14\x51\xf0\x16\x00\x26\x7c\x43\x00\x13\x8e\x21\x00\x00\x98"
+   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x20";
+#else
 
 // 480P EDID
 static unsigned char TOSHH2C_DEFAULT_EDID[] = //{
-   "00FFFFFFFFFFFF005262888800888888"
-   "1C150103800000780AEE91A3544C9926"
-   "0F505400000001010101010101010101"
-   "0101010101018C0AD08A20E02D10103E"
-   "9600138E2100001E000000FC00546F73"
-   "686962612D4832430A20000000FD003B"
-   "3D0F2E0F000A20202020202000000010"
-   "000000000000000000000000000001C8";
+"\x00\xFF\xFF\xFF\xFF\xFF\xFF\x00\x52\x62\x88\x88\x00\x88\x88\x88"
+"\x1C\x15\x01\x03\x80\x00\x00\x78\x0A\xEE\x91\xA3\x54\x4C\x99\x26"
+"\x0F\x50\x54\x00\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+"\x01\x01\x01\x01\x01\x01\x8C\x0A\xD0\x8A\x20\xE0\x2D\x10\x10\x3E"
+"\x96\x00\x13\x8E\x21\x00\x00\x1E\x00\x00\x00\xFC\x00\x54\x6F\x73"
+"\x68\x69\x62\x61\x2D\x48\x32\x43\x0A\x20\x00\x00\x00\xFD\x00\x3B"
+"\x3D\x0F\x2E\x0F\x00\x0A\x20\x20\x20\x20\x20\x20\x00\x00\x00\x10"
+"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xC8";
 
 #endif
 
@@ -440,56 +393,133 @@ void write_regs(int fd, struct cmds_t *regs, int count)
    }
 }
 
-unsigned char ascii_to_hex(unsigned char c)
-{
-   if(c>='0' && c<='9')
-      return (c-'0');
-   else if (c>='A' && c<='F')
-      return ((c-'A') + 10);
-   else if (c>='a' && c<='f')
-      return ((c-'a') + 10);
-   return 0;
-}
 void start_camera_streaming(int fd)
 {
-#ifdef DO_PIN_CONFIG
-   wiringPiSetupGpio();
-   pinModeAlt(0, INPUT);
-   pinModeAlt(1, INPUT);
-   //Toggle these pin modes to ensure they get changed.
-   pinModeAlt(28, INPUT);
-   pinModeAlt(28, 4);   //Alt0
-   pinModeAlt(29, INPUT);
-   pinModeAlt(29, 4);   //Alt0
-   digitalWrite(41, 1); //Shutdown pin on B+ and Pi2
-   digitalWrite(32, 1); //LED pin on B+ and Pi2
-#endif
+   #ifdef DO_PIN_CONFIG
+      wiringPiSetupGpio();
+      pinModeAlt(0, INPUT);
+      pinModeAlt(1, INPUT);
+      //Toggle these pin modes to ensure they get changed.
+      pinModeAlt(28, INPUT);
+      pinModeAlt(28, 4);   //Alt0
+      pinModeAlt(29, INPUT);
+      pinModeAlt(29, 4);   //Alt0
+      digitalWrite(41, 1); //Shutdown pin on B+ and Pi2
+      digitalWrite(32, 1); //LED pin on B+ and Pi2
+   #endif
+
+   #define ENABLE_DATALANE_1 0x0
+   #define DISABLE_DATALANE_1 0x1
+
+   u8 _s_v_format = i2c_rd8(fd, VI_STATUS) & 0x0F;
+   
+   vcos_log_error("VI_STATUS to select cfg.data_lanes: %u", _s_v_format);
+
+   u16 r0006;
+   u8 r0148;
+   u32 r0500;
+
+   if (_s_v_format < 12)
+   {
+      r0006 = 0x0080;
+      r0148 = DISABLE_DATALANE_1;
+      r0500 = 0xA3008080;
+      vcos_log_error("Selected Sub 720p registers");
+   }
+   else
+   {
+      r0006 = 0x0008;
+      r0148 = ENABLE_DATALANE_1;
+      r0500 = 0xA3008082;
+      vcos_log_error("Selected 720p+ registers");
+   }
+
+   struct cmds_t cmds[] = 
+   {
+      {0x0004, 0x0000, 2}, // Disable video TX Buffer 
+      // Turn off power and put in reset
+      // handle.first_boot = VC_FALSE;
+      {0x0002, 0x0F00, 2},    // Assert Reset, [0] = 0: Exit Sleep, wait
+
+      {0x0000, 1, 0xFFFF},      // V054 requires us to wait 1ms for PLL to lock
+      {0x0002, 0x0000, 2},    // Release Reset, Exit Sleep
+      {0x0006, r0006, 2},    // FIFO level
+      {0x0008, 0x005f, 2},    // Audio buffer level -- 96 bytes = 0x5F + 1
+      {0x0014, 0xFFFF, 2},     // Clear HDMI Rx, CSI Tx and System Interrupt Status
+      {0x0016, 0x051f, 2},    // Enable HDMI-Rx Interrupt (bit 9), Sys interrupt (bit 5). Disable others. 11-15, 6-7 reserved
+      {0x0020, 0x8111, 2},        // PRD[15:12], FBD[8:0]
+      {0x0022, 0x0213, 2},    // FRS[11:10], LBWS[9:8]= 2, Clock Enable[4] = 1,  ResetB[1] = 1,  PLL En[0]
+      {0x0004, r0004,  2},    // PwrIso[15], 422 output, send infoframe
+      {0x0140, 0x0,    4},    //Enable CSI-2 Clock lane
+      {0x0144, 0x0,    4},    //Enable CSI-2 Data lane 0
+      {0x0148, r0148,    4},    //Enable CSI-2 Data lane 1
+      {0x014C, 0x1,    4},    //Disable CSI-2 Data lane 2
+      {0x0150, 0x1,    4},    //Disable CSI-2 Data lane 3
+
+      {0x0210, 0x00002988, 4},   // LP11 = 100 us for D-PHY Rx Init
+      {0x0214, 0x00000005, 4},   // LP Tx Count[10:0]
+      {0x0218, 0x00001d04, 4},   // TxClk_Zero[15:8]
+      {0x021C, 0x00000002, 4},   // TClk_Trail =
+      {0x0220, 0x00000504, 4},   // HS_Zero[14:8] =
+      {0x0224, 0x00004600, 4},   // TWAKEUP Counter[15:0]
+      {0x0228, 0x0000000A, 4},   // TxCLk_PostCnt[10:0]
+      {0x022C, 0x00000004, 4},   // THS_Trail =
+      {0x0234, 0x0000001F, 4},   // Enable Voltage Regulator for CSI (4 Data + Clk) Lanes
+      {0x0204, 0x00000001, 4},   // Start PPI
+
+      {0x0518, 0x00000001, 4},   // Start CSI-2 Tx
+      {0x0500, r0500, 4},   // SetBit[31:29]
+         //
+         //    1010 0011 0000 0000    1000 0000 1010 0010
+
+      {0x8502, 0x01, 1},      // Enable HPD DDC Power Interrupt
+      {0x8512, 0xFE, 1},      // Disable HPD DDC Power Interrupt Mask
+      {0x8513, (uint8_t) ~0x20, 1},    // Receive interrupts for video format change (bit 5)
+      {0x8515, (uint8_t) ~0x02, 1},    // Receive interrupts for format change (bit 1)
+
+      {0x8531, 0x01, 1},      // [1] = 1: RefClk 42 MHz, [0] = 1, DDC5V Auto detection
+      {0x8540, 0x0A8C, 2}, // SysClk Freq count with RefClk = 27 MHz (0x1068 for 42 MHz, default)
+      {0x8630, 0x00041eb0, 4},   // Audio FS Lock Detect Control [19:0]: 041EB0 for 27 MHz, 0668A0 for 42 MHz (default)
+      {0x8670, 0x01, 1},         // SysClk 27/42 MHz: 00:= 42 MHz
+
+      {0x8532, 0x80, 1},      // PHY_AUTO_RST[7:4] = 1600 us, PHY_Range_Mode = 12.5 us
+      {0x8536, 0x40, 1},      // [7:4] Ibias: TBD, [3:0] BGR_CNT: Default
+      {0x853F, 0x0A, 1},      // [3:0] = 0x0a: PHY TMDS CLK line squelch level: 50 uA
+
+      {0x8543, 0x32, 1},      // [5:4] = 2'b11: 5V Comp, [1:0] = 10, DDC 5V active detect delay setting: 100 ms
+      {0x8544, 0x10, 1},      // DDC5V detection interlock -- enable
+      {0x8545, 0x31, 1},      //  [5:4] = 2'b11: Audio PLL charge pump setting to Normal, [0] = 1: DAC/PLL Power On
+      {0x8546, 0x2D, 1},      // [7:0] = 0x2D: AVMUTE automatic clear setting (when in MUTE and no AVMUTE CMD received) 45 * 100 ms
+
+      {0x85C7, 0x01, 1},      // [6:4] EDID_SPEED: 100 KHz, [1:0] EDID_MODE: Internal EDID-RAM & DDC2B mode
+      {0x85CB, 0x01, 1},      // EDID Data size read from EEPROM EDID_LEN[10:8] = 0x01, 256-Byte
+   };
+   #define NUM_REGS_CMD (sizeof(cmds)/sizeof(cmds[0]))
+
+
    write_regs(fd, cmds, NUM_REGS_CMD);
       // default is 256 bytes, 256 / 16
    // write in groups of 16
    {
-      u8 edid[256];
       int i, j;
       unsigned char checksum = 0;
-      for (i = 0; i < sizeof(TOSHH2C_DEFAULT_EDID)/2; i += 16)
+      for (i = 0; i < sizeof(TOSHH2C_DEFAULT_EDID); i += 16)
       {
          for (j = 0; j < 15; j++)
          {
-            edid[i + j] = (ascii_to_hex(TOSHH2C_DEFAULT_EDID[i+j*2])<<4) +
-                           ascii_to_hex(TOSHH2C_DEFAULT_EDID[i+j*2 + 1]);
-            checksum -= edid[i + j];
+            checksum -= TOSHH2C_DEFAULT_EDID[i + j];
          }
          // if checksum byte
          if (i == (7 * 16) || i == (15 * 16))
          {
-            edid[i + 15] = checksum;
+            TOSHH2C_DEFAULT_EDID[i + 15] = checksum;
             checksum = 0;
          }
          else
          {
-            checksum -= edid[i + 15];
+            checksum -= TOSHH2C_DEFAULT_EDID[i + 15];
          }
-         i2c_wr(fd, 0x8C00 + i, &edid[i], 16);
+         i2c_wr(fd, 0x8C00 + i, &TOSHH2C_DEFAULT_EDID[i], 16);
       }
    }
    write_regs(fd, cmds2, NUM_REGS_CMD2);
@@ -523,10 +553,12 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
 
    if (running)
    {
-      FILE *file = (FILE*)port->userdata;
-      bytes_written = fwrite(buffer->data, 1, buffer->length, file);
-      fflush(file);
-
+      if (optional_file == 1)
+      {
+         FILE *file = (FILE*)port->userdata;
+         bytes_written = fwrite(buffer->data, 1, buffer->length, file);
+         fflush(file);
+      }
       mmal_buffer_header_mem_unlock(buffer);
 
       if (bytes_written != buffer->length)
@@ -553,7 +585,7 @@ static FILE *open_filename(const char *filename)
 {
    FILE *new_handle = NULL;
 
-   if (filename)
+   if (filename && optional_file == 1)
    {
       int network = 0, socktype;
       if(!strncmp("tcp://", filename, 6))
@@ -604,9 +636,56 @@ static FILE *open_filename(const char *filename)
    return new_handle;
 }
 
-
-int main (void)
+/* Clean up after Ctrl+c */
+void signal_callback_handler(int signum)
 {
+   printf("Caught signal %d\nCleanly exiting\n", signum);
+   called_quit = 1; 
+   // goto exit;
+   // exit(signum);
+}
+
+int main ( int argc, char *argv[] )
+{
+   int8_t option_index = 0; 
+   u32 sleep_duration = 0; //strtol(argv[1], &ptr, 10);
+   char *_filename = "test_encode.h264"; 
+   while ((option_index = getopt(argc, argv, "nht:o:")) != -1)
+   {
+      switch (option_index)
+      {
+         case 'n':
+            optional_file = 0; 
+            break;
+         case 't':
+            sleep_duration = atoi(optarg); // not type safe 
+            break; 
+         case 'o':
+            if (strcmp(optarg, "") != 0)
+            {
+               _filename = (char*) malloc(1 + strlen(optarg) + strlen(".h264"));
+               strcpy(_filename, optarg);
+               strcat(_filename, ".h264");   
+            }  
+            break; 
+         case 'h':
+            printf("Available options:\n\n");
+            printf("\t-t\tDefaults to 0 ms which playbacks until ctrl+c.\n");
+            printf("\t-o\tOutput filename, default is 'test_encode.h264'.\n");
+            printf("\t-n\tNo output file saved.\n");
+            printf("\t-h\tHelp\n");
+            return 1; 
+         default: 
+            printf("Incorrect option!\n");
+            return 1;
+      }
+   }
+   printf("Filename is %s\n", _filename);
+   if (sleep_duration != 0)
+      printf("Playing back for %u ms.\n", sleep_duration);
+   else
+      printf("Playing back indefinitely\n");
+   u8 playthroughs = 0;
    MMAL_COMPONENT_T *rawcam, *render, *isp, *splitter, *encoder;
    MMAL_STATUS_T status;
    MMAL_PORT_T *output, *input, *isp_input, *isp_output, *encoder_input, *encoder_output;
@@ -617,6 +696,9 @@ int main (void)
    int i2c_fd;
    unsigned int width, height, fps, frame_interval;
    unsigned int frame_width, frame_height;
+
+   /* CALL THE SIGNAL HANDLER FUNCTION ON A Ctrl-C EXIT */
+   signal(SIGINT, signal_callback_handler);
 
    i2c_fd = open("/dev/i2c-0", O_RDWR);
    if (!i2c_fd)
@@ -667,6 +749,8 @@ int main (void)
       return -1;
    }
 
+   loop:
+
    output = rawcam->output[0];
    isp_input = isp->input[0];
    isp_output = isp->output[0];
@@ -682,7 +766,24 @@ int main (void)
       goto component_destroy;
    }
    rx_cfg.image_id = CSI_IMAGE_ID;
-   rx_cfg.data_lanes = CSI_DATA_LANES;
+
+
+   u8 _s_v_format = i2c_rd8(i2c_fd, VI_STATUS) & 0x0F;
+   vcos_log_error("VI_STATUS to select cfg.data_lanes: %u", _s_v_format);
+
+   if (_s_v_format < 12)
+   {
+      rx_cfg.data_lanes = 1; 
+      vcos_log_error("rx_cfg.data_lanes = 1");
+   }
+   else
+   {
+      rx_cfg.data_lanes = 2; 
+      vcos_log_error("rx_cfg.data_lanes = 2");
+   }
+
+
+
    rx_cfg.unpack = UNPACK;
    rx_cfg.pack = PACK;
    rx_cfg.embedded_data_lines = 128;
@@ -760,6 +861,19 @@ int main (void)
       i2c_rd8(i2c_fd, H_SIZE_LO);
    frame_height = (((i2c_rd8(i2c_fd, V_SIZE_HI) & 0x3f) << 8) +
       i2c_rd8(i2c_fd, V_SIZE_LO)) / 2;
+   
+
+
+
+
+
+   if (playthroughs == 0)
+   {
+      playthroughs++;
+      vcos_log_error("First playthrough, Goto Loop");
+      goto loop;
+   }
+
 
    /* frame interval in milliseconds * 10
     * Require SYS_FREQ0 and SYS_FREQ1 are precisely set */
@@ -977,9 +1091,12 @@ int main (void)
    }
 
    // open h264 file and put the file handle in userdata for the encoder output port
-
-   encoder_output->userdata = (void*)open_filename("test_encode.h264");
-
+   encoder_output->userdata = (void*)open_filename(_filename);
+   if (strcmp(_filename, "test_encode.h264") != 0)
+   {
+      free(_filename);
+      _filename = NULL;     
+   }
    //Create encoder output buffers
 
    vcos_log_error("Create pool of %d buffers of size %d", encoder_output->buffer_num, encoder_output->buffer_size);
@@ -1016,18 +1133,33 @@ int main (void)
       vcos_log_error("Sent buffer %p", buffer);
    }
 
-   // Setup complete
 
+   // Setup complete
    vcos_log_error("All done. Start streaming...");
    write_regs(i2c_fd, cmds3, NUM_REGS_CMD3);
-
    vcos_log_error("View!");
 
-   vcos_sleep(10000);
+   if (sleep_duration > 0)
+   {
+      vcos_log_error("Sleeping for %u ms", sleep_duration);
+      vcos_sleep(sleep_duration);
+   }
+   else
+   {
+      vcos_log_error("Sleeping until you ctrl+c me!");
+      while (called_quit != 1)
+      {
+         vcos_sleep(100);
+      }
+   }
+
+// exit:
    running = 0;
 
    vcos_log_error("Stopping streaming...");
    stop_camera_streaming(i2c_fd);
+
+   playthroughs = 0;
 
 port_disable:
 
@@ -1084,6 +1216,8 @@ component_destroy:
    close(i2c_fd);
    return 0;
 }
+
+
 
 #define MAX_ENCODINGS_NUM 20
 typedef struct {

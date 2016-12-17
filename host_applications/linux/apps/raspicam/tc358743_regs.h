@@ -29,6 +29,8 @@
 #ifndef __TC358743_REGS_H
 #define __TC358743_REGS_H
 
+#define VI_STATUS 							  0x8521
+
 #define CHIPID                                0x0000
 #define MASK_CHIPID                           0xff00
 #define MASK_REVID                            0x00ff
