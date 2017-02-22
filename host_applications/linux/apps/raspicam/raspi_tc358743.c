@@ -524,7 +524,7 @@ void start_camera_streaming(int fd)
       unsigned char checksum = 0;
       for (i = 0; i < sizeof(TOSHH2C_DEFAULT_EDID)/2; i += 16)
       {
-         for (j = 0; j < 15; j++)
+         for (j = 0; j < 16; j++)
          {
             edid[i + j] = (ascii_to_hex(TOSHH2C_DEFAULT_EDID[(i+j)*2])<<4) +
                            ascii_to_hex(TOSHH2C_DEFAULT_EDID[(i+j)*2 + 1]);
