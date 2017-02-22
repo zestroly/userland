@@ -67,16 +67,16 @@ gpio -g mode 28 in
 gpio -g mode 29 in
 # i2c on these pins
 gpio -g mode 44 in
-gpio -g mode 44 alt2
+gpio -g mode 44 alt1
 gpio -g mode 45 in
-gpio -g mode 45 alt2
+gpio -g mode 45 alt1
 #shutdown
 # you need this one: https://github.com/6by9/rpi3-gpiovirtbuf
 #gpio -g write 41 1
 ./rpi3-gpiovirtbuf/rpi3-gpiovirtbuf s 133 1
 #LED
 #gpio -g write 32 1
-i2cdetect -y 1
+i2cdetect -y 0
 ;;
 
 *)
