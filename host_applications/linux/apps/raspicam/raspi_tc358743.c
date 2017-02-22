@@ -520,8 +520,8 @@ void start_camera_streaming(int fd)
       {
          for (j = 0; j < 15; j++)
          {
-            edid[i + j] = (ascii_to_hex(TOSHH2C_DEFAULT_EDID[i+j*2])<<4) +
-                           ascii_to_hex(TOSHH2C_DEFAULT_EDID[i+j*2 + 1]);
+            edid[i + j] = (ascii_to_hex(TOSHH2C_DEFAULT_EDID[(i+j)*2])<<4) +
+                           ascii_to_hex(TOSHH2C_DEFAULT_EDID[(i+j)*2 + 1]);
             checksum -= edid[i + j];
          }
          // if checksum byte
