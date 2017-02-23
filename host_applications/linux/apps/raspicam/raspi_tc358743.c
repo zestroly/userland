@@ -265,6 +265,32 @@ struct cmds_t {
 
 #define TWOLANES
 
+/* Old EDID for reference
+   "\x00\xff\xff\xff\xff\xff\xff\x00\x52\x62\x88\x88\x00\x88\x88\x88"
+   "\x1c\x15\x01\x03\x80\x00\x00\x78\x0a\xEE\x91\xA3\x54\x4C\x99\x26"
+   "\x0F\x50\x54\x00\x00\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+   "\x01\x01\x01\x01\x01\x01\x01\x1d\x00\x72\x51\xd0\x1e\x20\x6e\x28"
+   "\x55\x00\xc4\x8e\x21\x00\x00\x1e\x8c\x0a\xd0\x8a\x20\xe0\x2d\x10"
+   "\x10\x3e\x96\x00\x13\x8e\x21\x00\x00\x1e\x00\x00\x00\xfc\x00\x54"
+   "\x6f\x73\x68\x69\x62\x61\x2d\x48\x32\x43\x0a\x20\x00\x00\x00\xFD"
+   "\x00\x3b\x3d\x0f\x2e\x0f\x1e\x0a\x20\x20\x20\x20\x20\x20\x01\x67"
+
+   "\x02\x03\x1A\x42"                                                   //CEA, V3, offset 1a to DTDs,  num of native DTDs | 0x40 (basic audio)
+                   "\x47\x84\x13\x03\x02\x07\x06\x01"                   //Video
+                                                   "\x23\x09\x07\x07"   //Audio. 2-chan LPCM, 32/44/48kHz, 16/20/24 bit.
+   "\x66\x03\x0c\x00\x30\x00\x80"                                       //Vendor specific. IEEE reg 00-0C-03. Source physical address 00-30. Supports AI.
+                               "\xE3\x00\x7F"                           //?? Reserved DCB type 7, length 3
+                                          "\x8c\x0a\xd0\x8a\x20\xe0"    //DTD #1
+   "\x2d\x10\x10\x3e\x96\x00\xc4\x8e\x21\x00\x00\x18"
+                                                   "\x8c\x0a\xd0\x8a"   //DTD #2
+   "\x20\xe0\x2d\x10\x10\x3e\x96\x00\x13\x8e\x21\x00\x00\x18"
+                                                           "\x8c\x0a"   //DTD #3
+   "\xa0\x14\x51\xf0\x16\x00\x26\x7c\x43\x00\x13\x8e\x21\x00\x00\x98"
+   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"   //End. 0 padded
+   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+*/
+
 #ifdef TWOLANES
 static unsigned char TOSHH2C_DEFAULT_EDID[] =
     "00ffffffffffff005262888800888888"
@@ -272,17 +298,29 @@ static unsigned char TOSHH2C_DEFAULT_EDID[] =
     "0F505400000001010101010101010101"
     "010101010101011d007251d01e206e28"
     "5500c48e2100001e8c0ad08a20e02d10"
-    "103e9600138e2100001e000000fc0054"
-    "6f73686962612d4832430a20000000FD"
-    "003b3d0f2e0f1e0a2020202020200167"
-    "020320424d841303021211012021223c"
-    "3d3e2309070766030c00300080E3007F"
-    "8c0ad08a20e02d10103e9600c48e2100"
-    "00188c0ad08a20e02d10103e9600138e"
-    "210000188c0aa01451f01600267c4300"
-    "138e2100009800000000000000000000"
+    "103e9600138e2100001e000000"
+                              "fc0054"   //FC, 00, Device name ("Toshiba-H2C")
+    "6f73686962612d4832430a20000000"
+                                  "FD"
+    "003b3d0f2e0f1e0a2020202020200100"
+
+    "0203"                                //CEA EDID, V3
+        "20"                              //offset to DTDs,
+          "42"                            //num of native DTDs | 0x40 (basic audio support)
+            "4d841303021211012021223c"    //(Length|0x40), then list of VICs.
+    "3d3e"
+        "23090707"                        //(Length|0x20), then audio data block
+                "66030c00300080"          //(Length|0x60), then vendor specific block
+                              "E3007F"    //?? Reserved DCB type 7, length 3
+    "8c0ad08a20e02d10103e9600c48e2100"    //DTD #1
+    "0018"
+        "8c0ad08a20e02d10103e9600138e"    //DTD #2
+    "21000018"
+            "8c0aa01451f01600267c4300"    //DTD #3
+    "138e21000098"
+                "00000000000000000000"    //End. 0 padded.
     "00000000000000000000000000000000"
-    "00000000000000000000000000000020";
+    "00000000000000000000000000000000";
 
 #else
 //4 LANES
@@ -292,17 +330,29 @@ static unsigned char TOSHH2C_DEFAULT_EDID[] =
     "0F505400000001010101010101010101"
     "010101010101011d007251d01e206e28"
     "5500c48e2100001e8c0ad08a20e02d10"
-    "103e9600138e2100001e000000fc0054"
-    "6f73686962612d4832430a20000000FD"
-    "003b3d0f2e0f1e0a2020202020200167"
-    "020320424f841303021211012021223c"
-    "3d3e101f2309070766030c00300080E3"
-    "007F8c0ad08a20e02d10103e9600c48e"
-    "210000188c0ad08a20e02d10103e9600"
-    "138e210000188c0aa01451f01600267c"
-    "4300138e210000980000000000000000"
+    "103e9600138e2100001e000000"
+                              "fc0054"   //FC, 00, Device name ("Toshiba-H2C")
+    "6f73686962612d4832430a20000000"
+                                  "FD"
+    "003b3d0f2e0f1e0a2020202020200100"
+
+    "0203"                                //CEA EDID, V3
+        "22"                              //offset to DTDs,
+          "42"                            //num of native DTDs | 0x40 (basic audio support)
+            "4f841303021211012021223c"    //(Length|0x40), then list of VICs.
+    "3d3e101f"
+            "2309070766030c00300080"      //Audio. 2-chan LPCM, 32/44/48kHz, 16/20/24 bit.
+                                  "E3"    //?? Reserved DCB type 7, length 3
+    "007F"
+        "8c0ad08a20e02d10103e9600c48e"    //DTD #1
+    "21000018"
+            "8c0ad08a20e02d10103e9600"    //DTD #2
+    "138e21000018"
+                "8c0aa01451f01600267c"    //DTD #3
+    "4300138e21000098"
+                    "0000000000000000"    //End. 0 padded.
     "00000000000000000000000000000000"
-    "00000000000000000000000000000020";
+    "00000000000000000000000000000000";
 
 #endif
 
@@ -535,10 +585,6 @@ void start_camera_streaming(int fd)
          {
             edid[i + 15] = checksum;
             checksum = 0;
-         }
-         else
-         {
-            checksum -= edid[i + 15];
          }
          i2c_wr(fd, 0x8C00 + i, &edid[i], 16);
       }
