@@ -13,3 +13,6 @@ build/
 *.lai
 *.la
 *.a
+
+*.jpg
+
