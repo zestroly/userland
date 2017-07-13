@@ -79,6 +79,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "interface/mmal/util/mmal_util_params.h"
 #include "interface/mmal/util/mmal_default_components.h"
 #include "interface/mmal/util/mmal_connection.h"
+#include "interface/mmal/mmal_parameters_camera.h"
 
 #include "RaspiCamControl.h"
 #include "RaspiPreview.h"
@@ -256,7 +257,6 @@ static XREF_T  level_map[] =
 
 static int level_map_size = sizeof(level_map) / sizeof(level_map[0]);
 
-
 static XREF_T  initial_map[] =
 {
    {"record",     0},
@@ -333,7 +333,7 @@ static COMMAND_LIST cmdline_commands[] =
    { CommandOutput,        "-output",     "o",  "Output filename <filename> (to write to stdout, use '-o -').\n"
          "\t\t  Connect to a remote IPv4 host (e.g. tcp://192.168.1.2:1234, udp://192.168.1.2:1234)\n"
          "\t\t  To listen on a TCP port (IPv4) and wait for an incoming connection use -l\n"
-         "\t\t  (e.g. raspvid -l -o tcp://0.0.0.0:3333 -> bind to all network interfaces, raspvid -l -o tcp://192.168.1.1:3333 -> bind to a certain local IPv4)", 1 },
+         "\t\t  (e.g. raspivid -l -o tcp://0.0.0.0:3333 -> bind to all network interfaces, raspivid -l -o tcp://192.168.1.1:3333 -> bind to a certain local IPv4)", 1 },
    { CommandVerbose,       "-verbose",    "v",  "Output verbose information during run", 0 },
    { CommandTimeout,       "-timeout",    "t",  "Time (in ms) to capture for. If not specified, set to 5s. Zero to disable", 1 },
    { CommandDemoMode,      "-demo",       "d",  "Run a demo mode (cycle through range of camera options, no capture)", 1},
@@ -633,7 +633,7 @@ static int parse_cmdline(int argc, const char **argv, RASPIVID_STATE *state)
             valid = 0;
          break;
       }
-
+      
       case CommandPreviewEnc:
          state->immutableInput = 0;
          break;
@@ -1055,7 +1055,7 @@ static FILE *open_filename(RASPIVID_STATE *pState, char *filename)
    if (filename)
    {
       bool bNetwork = false;
-      int sfd, socktype;
+      int sfd = -1, socktype;
 
       if(!strncmp("tcp://", filename, 6))
       {
@@ -1165,7 +1165,8 @@ static FILE *open_filename(RASPIVID_STATE *pState, char *filename)
                fprintf(stderr, "Error creating socket: %s\n", strerror(errno));
          }
 
-         new_handle = fdopen(sfd, "w");
+         if (sfd >= 0)
+            new_handle = fdopen(sfd, "w");
       }
       else
       {
@@ -1766,6 +1767,7 @@ static MMAL_STATUS_T create_camera_component(RASPIVID_STATE *state)
       goto error;
    }
 
+   // Note: this sets lots of parameters that were not individually addressed before.
    raspicamcontrol_set_all_parameters(camera, &state->camera_parameters);
 
    state->camera_component = camera;

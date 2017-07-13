@@ -60,12 +60,13 @@ typedef struct dtoverlay_struct
 typedef struct dtblob_struct
 {
    void *fdt;
-   int fdt_is_malloced;
+   char fdt_is_malloced;
+   char trailer_is_malloced;
+   char fixups_applied;
    int min_phandle;
    int max_phandle;
    void *trailer;
    int trailer_len;
-   int trailer_is_malloced;
 } DTBLOB_T;
 
 
@@ -172,6 +173,8 @@ int dtoverlay_find_symbol(DTBLOB_T *dtb, const char *symbol_name);
 
 int dtoverlay_find_matching_node(DTBLOB_T *dtb, const char **node_names,
                                  int pos);
+
+int dtoverlay_node_is_enabled(DTBLOB_T *dtb, int pos);
 
 const void *dtoverlay_get_property(DTBLOB_T *dtb, int pos,
                                    const char *prop_name, int *prop_len);
