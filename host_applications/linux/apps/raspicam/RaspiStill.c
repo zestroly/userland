@@ -1077,7 +1077,7 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
       MMAL_PARAMETER_LENS_SHADING_T ls = {{MMAL_PARAMETER_LENS_SHADING_OVERRIDE, sizeof(MMAL_PARAMETER_LENS_SHADING_T)}};
       void *grid;
 
-      #include "ls_grid.h"
+      #include "ls_table.h"
 
       ls.enabled = MMAL_TRUE;
       ls.grid_cell_size = 64;
